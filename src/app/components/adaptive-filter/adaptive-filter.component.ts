@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild, ElementRef, AfterViewInit, NgZone } from '@angular/core';
+import { Component, OnInit, ViewChild, ElementRef, AfterViewInit, NgZone, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -923,7 +923,7 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
   coeffYIndex = 1;
   maxDisplayCoeffs = [0, 1, 2, 3];
 
-  constructor(private ngZone: NgZone) {}
+  constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.activeAlgorithmTab = this.algorithmConfig.selectedAlgorithms[0] || 'lms';
@@ -997,6 +997,7 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
 
     this.isRunning = true;
     this.progress = 0;
+    this.cdr.detectChanges();
 
     try {
       await this.runSimulationAsync();
@@ -1009,22 +1010,45 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
   }
 
   private async runSimulationAsync(): Promise<void> {
+    const N = Math.floor(this.signalConfig.sampleRate * this.signalConfig.duration);
+    const needsProgress = N > 16000;
+
+    const updateProgress = (val: number) => {
+      this.progress = val;
+      this.cdr.detectChanges();
+    };
+
     return new Promise((resolve) => {
-      this.ngZone.runOutsideAngular(() => {
+      updateProgress(5);
+
+      setTimeout(() => {
+        const { signals, signalPower, noisePower } = generateSignals(this.signalConfig);
+        this.signals = signals;
+        this.signalPower = signalPower;
+        this.noisePower = noisePower;
+
+        updateProgress(25);
+
         setTimeout(() => {
-          this.progress = 10;
-
-          const { signals, signalPower, noisePower } = generateSignals(this.signalConfig);
-          this.signals = signals;
-          this.signalPower = signalPower;
-          this.noisePower = noisePower;
-
-          this.progress = 30;
-
           const results: AlgorithmResult[] = [];
           const totalAlgs = this.algorithmConfig.selectedAlgorithms.length;
 
-          this.algorithmConfig.selectedAlgorithms.forEach((alg, idx) => {
+          const runNextAlg = (algIdx: number) => {
+            if (algIdx >= totalAlgs) {
+              this.algorithmResults = results;
+              updateProgress(90);
+
+              setTimeout(() => {
+                this.updatePerformanceMetrics();
+                this.updateMaxDisplayCoeffs();
+                this.plotAll();
+                updateProgress(100);
+                resolve();
+              }, needsProgress ? 50 : 0);
+              return;
+            }
+
+            const alg = this.algorithmConfig.selectedAlgorithms[algIdx];
             let params: LMSParams | NLMSParams | RLSParams;
             if (alg === 'lms') {
               params = this.algorithmConfig.lms;
@@ -1043,22 +1067,14 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
             );
             results.push(result);
 
-            this.progress = 30 + ((idx + 1) / totalAlgs) * 60;
-          });
+            updateProgress(25 + ((algIdx + 1) / totalAlgs) * 65);
 
-          this.algorithmResults = results;
+            setTimeout(() => runNextAlg(algIdx + 1), needsProgress ? 50 : 0);
+          };
 
-          this.progress = 95;
-
-          this.ngZone.run(() => {
-            this.updatePerformanceMetrics();
-            this.updateMaxDisplayCoeffs();
-            this.plotAll();
-            this.progress = 100;
-            resolve();
-          });
-        }, 50);
-      });
+          runNextAlg(0);
+        }, needsProgress ? 50 : 0);
+      }, needsProgress ? 50 : 0);
     });
   }
 

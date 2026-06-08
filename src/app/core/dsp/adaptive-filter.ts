@@ -64,16 +64,20 @@ export function generateSignals(config: SignalConfig): {
   const noisePower = computePower(noise);
   const targetSnrLinear = Math.pow(10, snr / 10);
   const noiseScale = Math.sqrt(signalPower / (noisePower * targetSnrLinear));
+
+  let reference: number[] = [];
+  for (let n = 0; n < N; n++) {
+    const uncorrelatedNoise = gaussianRandom();
+    reference.push(
+      referenceCorrelation * noise[n] +
+      uncorrelatedNoise * Math.sqrt(1 - referenceCorrelation * referenceCorrelation) * Math.sqrt(noisePower)
+    );
+  }
+
   noise = noise.map(v => v * noiseScale);
+  reference = reference.map(v => v * noiseScale);
 
   const scaledNoisePower = computePower(noise);
-  const actualSnr = 10 * Math.log10(signalPower / scaledNoisePower);
-
-  const reference: number[] = [];
-  for (let n = 0; n < N; n++) {
-    const uncorrelatedNoise = gaussianRandom() * Math.sqrt(1 - referenceCorrelation * referenceCorrelation);
-    reference.push(referenceCorrelation * noise[n] / noiseScale + uncorrelatedNoise);
-  }
 
   for (let n = 0; n < N; n++) {
     signals.push({
@@ -211,7 +215,7 @@ export function rlsFilter(
   let P: number[][] = [];
   for (let i = 0; i < M; i++) {
     P.push(new Array(M).fill(0));
-    P[i][i] = 1 / delta;
+    P[i][i] = delta;
   }
 
   for (let n = 0; n < N; n++) {
@@ -237,7 +241,6 @@ export function rlsFilter(
       for (let j = 0; j < M; j++) {
         denom += xBuf[i] * P[i][j] * xBuf[j];
       }
-      break;
     }
 
     for (let i = 0; i < M; i++) {
@@ -302,20 +305,38 @@ export function computeMetrics(
   const inputSnr = 10 * Math.log10(signalPower / noisePower);
   const snrImprovement = outputSnr - inputSnr;
 
-  const threshold = mse * 2;
+  const threshold = mse * 3;
   let convergenceIteration = -1;
   let consecutiveCount = 0;
+  const windowSize = 50;
+  let windowSum = 0;
+
+  let initialMse = 0;
+  const initialWindow = Math.min(200, Math.floor(N * 0.1));
+  for (let i = 0; i < initialWindow; i++) {
+    initialMse += e[i] * e[i];
+  }
+  initialMse /= initialWindow;
 
   for (let i = 0; i < N; i++) {
     const eSq = e[i] * e[i];
-    if (eSq < threshold) {
-      consecutiveCount++;
-      if (consecutiveCount >= 100) {
-        convergenceIteration = i - 99;
-        break;
+    windowSum += eSq;
+
+    if (i >= windowSize) {
+      windowSum -= e[i - windowSize] * e[i - windowSize];
+    }
+
+    if (i >= windowSize - 1) {
+      const avgEsq = windowSum / windowSize;
+      if (avgEsq < threshold && avgEsq < initialMse * 0.5) {
+        consecutiveCount++;
+        if (consecutiveCount >= 30) {
+          convergenceIteration = i - windowSize - 29;
+          break;
+        }
+      } else {
+        consecutiveCount = 0;
       }
-    } else {
-      consecutiveCount = 0;
     }
   }
 
