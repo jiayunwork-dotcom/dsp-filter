@@ -68,11 +68,14 @@ import { ToggleGroupComponent } from '../slider-control/slider-control.component
 })
 export class FrequencyResponseComponent implements OnInit, OnChanges {
   @Input() response!: FrequencyResponse;
+  @Input() response2: FrequencyResponse | null = null;
+  @Input() response2Label = '';
   @Input() passband: { start: number; end: number } | null = null;
   @Input() stopband: { start: number; end: number } | null = null;
   @Input() passbandRipple = 1;
   @Input() stopbandAttenuation = 40;
   @Input() phaseJumps: number[] = [];
+  @Input() phaseJumps2: number[] = [];
 
   @ViewChild('magCanvas') magCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('phaseCanvas') phaseCanvas!: ElementRef<HTMLCanvasElement>;
@@ -152,8 +155,8 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
     if (this.passband) {
       plotter.drawShadedRegion(
         scales.x, scales.y,
-        this.passband.start / xScale,
-        this.passband.end / xScale,
+        this.passband.start * 2 * xScale,
+        this.passband.end * 2 * xScale,
         yMin, yMax,
         '#81c784', 0.2
       );
@@ -161,8 +164,8 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
     if (this.stopband) {
       plotter.drawShadedRegion(
         scales.x, scales.y,
-        this.stopband.start / xScale,
-        this.stopband.end / xScale,
+        this.stopband.start * 2 * xScale,
+        this.stopband.end * 2 * xScale,
         yMin, yMax,
         '#e57373', 0.2
       );
@@ -175,17 +178,44 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
 
     plotter.drawLine(magData, scales.x, scales.y, { color: '#4fc3f7', lineWidth: 2 });
 
+    if (this.response2) {
+      const resp2 = this.response2;
+      const magData2 = resp2.frequencies.map((f, i) => ({
+        x: f * xScale,
+        y: this.magMode === 'db' ? resp2.magnitudeDB[i] : resp2.magnitude[i]
+      }));
+      plotter.drawLine(magData2, scales.x, scales.y, { color: '#ffb74d', lineWidth: 2 });
+    }
+
     if (this.magMode === 'db') {
       plotter.drawLine(
         magData.map(d => ({ x: d.x, y: -this.passbandRipple })),
         scales.x, scales.y,
-        { color: '#ffb74d', lineWidth: 1, dashed: true }
+        { color: '#81c784', lineWidth: 1, dashed: true }
       );
       plotter.drawLine(
         magData.map(d => ({ x: d.x, y: -this.stopbandAttenuation })),
         scales.x, scales.y,
         { color: '#e57373', lineWidth: 1, dashed: true }
       );
+    }
+
+    if (this.response2 && this.response2Label) {
+      const ctx = canvas.getContext('2d')!;
+      ctx.save();
+      ctx.font = '12px Segoe UI, sans-serif';
+      ctx.textAlign = 'right';
+      
+      ctx.fillStyle = '#4fc3f7';
+      ctx.fillRect(rect.width - 150, 35, 15, 10);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillText('当前方法', rect.width - 160, 44);
+      
+      ctx.fillStyle = '#ffb74d';
+      ctx.fillRect(rect.width - 150, 50, 15, 10);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillText(this.response2Label, rect.width - 160, 59);
+      ctx.restore();
     }
 
     plotter.drawTitle('幅频响应');

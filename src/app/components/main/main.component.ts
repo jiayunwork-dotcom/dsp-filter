@@ -67,7 +67,7 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
           <div class="control-section">
             <app-select-control
               label="响应类型"
-              [options]="responseTypeOptions"
+              [options]="filterType === 'FIR' ? firResponseOptions : responseTypeOptions"
               [(value)]="responseType"
               (valueChange)="onResponseTypeChange()"
             ></app-select-control>
@@ -91,6 +91,13 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
             ></app-toggle-group>
           </div>
 
+          <div class="control-section" *ngIf="filterType === 'IIR' && responseType !== 'allpass'">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="showIirComparison" (change)="designFilter()">
+              <span>并排对比两种方法</span>
+            </label>
+          </div>
+
           <div class="control-section" *ngIf="filterType === 'IIR'">
             <app-select-control
               label="模拟原型"
@@ -100,7 +107,7 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
             ></app-select-control>
           </div>
 
-          <div class="control-section" *ngIf="firMethod === 'window'">
+          <div class="control-section" *ngIf="filterType === 'FIR' && firMethod === 'window'">
             <app-select-control
               label="窗类型"
               [options]="windowOptions"
@@ -147,7 +154,7 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
             ></app-slider-control>
           </div>
 
-          <div class="control-section" *ngIf="windowType === 'kaiser' && firMethod === 'window'">
+          <div class="control-section" *ngIf="filterType === 'FIR' && windowType === 'kaiser' && firMethod === 'window'">
             <app-slider-control
               label="Kaiser β 参数"
               [min]="0"
@@ -213,11 +220,14 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
             <app-frequency-response
               *ngIf="frequencyResponse"
               [response]="frequencyResponse"
+              [response2]="frequencyResponse2"
+              [response2Label]="response2Label"
               [passband]="passband"
               [stopband]="stopband"
               [passbandRipple]="passbandRipple"
               [stopbandAttenuation]="stopbandAttenuation"
               [phaseJumps]="phaseJumps"
+              [phaseJumps2]="phaseJumps2"
             ></app-frequency-response>
           </div>
 
@@ -351,6 +361,20 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
     }
     .control-section:last-of-type {
       border-bottom: none;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      color: var(--text-primary);
+      user-select: none;
+    }
+    .checkbox-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--primary);
     }
     .export-section {
       padding-top: 0.75rem;
@@ -535,11 +559,16 @@ export class MainComponent implements OnInit, OnDestroy {
   ];
 
   coefficients: FilterCoefficients = { b: [], a: [1] };
+  coefficients2: FilterCoefficients = { b: [], a: [1] };
   frequencyResponse: FrequencyResponse | null = null;
+  frequencyResponse2: FrequencyResponse | null = null;
+  response2Label = '';
   zeros: Complex[] = [];
   poles: Complex[] = [];
   stability: StabilityAnalysis = { isStable: true, maxPoleMagnitude: 0, stabilityMargin: 1 };
   phaseJumps: number[] = [];
+  phaseJumps2: number[] = [];
+  showIirComparison = false;
 
   showExportModal = false;
   exportFormat = 'python';
@@ -623,6 +652,11 @@ export class MainComponent implements OnInit, OnDestroy {
 
   designFilter(): void {
     try {
+      this.frequencyResponse2 = null;
+      this.coefficients2 = { b: [], a: [1] };
+      this.phaseJumps2 = [];
+      this.response2Label = '';
+
       if (this.filterType === 'FIR' && this.responseType !== 'allpass') {
         const params: FirDesignParams = {
           filterType: 'FIR',
@@ -654,6 +688,13 @@ export class MainComponent implements OnInit, OnDestroy {
             stopbandAttenuation: this.stopbandAttenuation
           };
           this.coefficients = this.filterService.designIIR(params);
+
+          if (this.showIirComparison) {
+            const otherMethod: IirMethod = this.iirMethod === 'bilinear' ? 'impulse-invariance' : 'bilinear';
+            const params2: IirDesignParams = { ...params, method: otherMethod };
+            this.coefficients2 = this.filterService.designIIR(params2);
+            this.response2Label = otherMethod === 'bilinear' ? '双线性变换' : '脉冲响应不变';
+          }
         }
       }
 
@@ -674,6 +715,15 @@ export class MainComponent implements OnInit, OnDestroy {
         this.phaseJumps = this.filterType === 'IIR'
           ? this.filterService.findPhaseJumps(this.frequencyResponse.phase)
           : [];
+      }
+
+      if (this.coefficients2.b.length > 0) {
+        this.frequencyResponse2 = this.filterService.computeFrequencyResponse(
+          this.coefficients2.b,
+          this.coefficients2.a,
+          1024
+        );
+        this.phaseJumps2 = this.filterService.findPhaseJumps(this.frequencyResponse2.phase);
       }
     } catch (e) {
       console.error('Design error:', e);
