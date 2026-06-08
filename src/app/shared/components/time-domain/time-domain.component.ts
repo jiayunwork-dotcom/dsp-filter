@@ -2,6 +2,7 @@ import { Component, Input, OnChanges, SimpleChanges, OnInit, ElementRef, ViewChi
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FilterService } from '@app/core/services/filter.service';
+import { CascadeSystem } from '@app/core/types/filter';
 import { CanvasPlotter } from '@app/shared/utils/canvas-plotter';
 import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } from '../slider-control/slider-control.component';
 
@@ -11,7 +12,18 @@ import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } 
   imports: [CommonModule, FormsModule, SliderControlComponent, SelectControlComponent, ToggleGroupComponent],
   template: `
     <div class="time-domain-container">
-      <h3>时域演示</h3>
+      <div class="header-row">
+        <h3>时域演示</h3>
+        <div class="cascade-toggle" *ngIf="cascadeSystem && cascadeSystem.nodes.length > 0">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="useCascadeSystem" (change)="applyFilter()">
+            <span>使用级联系统</span>
+          </label>
+          <span class="cascade-info" *ngIf="useCascadeSystem">
+            {{ cascadeSystem.nodes.length }}个节点 {{ cascadeSystem.connectionType === 'series' ? '串联' : '并联' }}
+          </span>
+        </div>
+      </div>
 
       <div class="controls">
         <app-select-control
@@ -102,6 +114,42 @@ import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } 
       flex-direction: column;
       gap: 1rem;
     }
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .header-row h3 {
+      margin: 0;
+    }
+    .cascade-toggle {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .cascade-info {
+      font-size: 0.85rem;
+      color: var(--primary);
+      background: rgba(79, 195, 247, 0.1);
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      color: var(--text-primary);
+      user-select: none;
+    }
+    .checkbox-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
     .controls {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -152,6 +200,8 @@ import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } 
 export class TimeDomainComponent implements OnInit, OnChanges {
   @Input() b: number[] = [];
   @Input() a: number[] = [1];
+  @Input() cascadeSystem: CascadeSystem | null = null;
+  @Input() useCascadeSystem = false;
 
   @ViewChild('inputCanvas') inputCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('outputCanvas') outputCanvas!: ElementRef<HTMLCanvasElement>;
@@ -206,7 +256,9 @@ export class TimeDomainComponent implements OnInit, OnChanges {
   }
 
   applyFilter(): void {
-    if (this.b.length > 0 && this.a.length > 0) {
+    if (this.useCascadeSystem && this.cascadeSystem && this.cascadeSystem.totalCoefficients && this.cascadeSystem.totalCoefficients.b.length > 0) {
+      this.outputSignal = this.filterService.filterSignalWithCascade(this.inputSignal, this.cascadeSystem);
+    } else if (this.b.length > 0 && this.a.length > 0) {
       this.outputSignal = this.filterService.filterSignal(this.inputSignal, this.b, this.a);
     } else {
       this.outputSignal = [...this.inputSignal];

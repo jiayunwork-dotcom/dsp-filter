@@ -145,6 +145,9 @@ export class PoleZeroPlotComponent implements OnInit, OnChanges {
   @Input() maxPoleMagnitude = 0;
   @Input() stabilityMargin = 1;
 
+  @Input() cascadeNodes: { zeros: Complex[]; poles: Complex[]; color: string }[] = [];
+  @Input() isCascadeMode = false;
+
   private localZeros: Complex[] = [];
   private localPoles: Complex[] = [];
 
@@ -287,48 +290,118 @@ export class PoleZeroPlotComponent implements OnInit, OnChanges {
       y: centerY - c.im * radius
     });
 
-    for (let i = 0; i < this.localZeros.length; i++) {
-      const pos = toCanvas(this.localZeros[i]);
-      const isUnstable = this.localZeros[i].abs() > 1;
-      const isSelected = this.selectedPoint?.type === 'zero' && this.selectedPoint?.index === i;
-      const isDragging = this.dragging?.type === 'zero' && this.dragging?.index === i;
+    if (this.isCascadeMode && this.cascadeNodes.length > 0) {
+      const legendItems: { color: string; label: string }[] = [];
 
-      this.ctx.strokeStyle = isUnstable ? '#e57373' : '#81c784';
-      this.ctx.lineWidth = isSelected || isDragging ? 3 : 2;
-      this.ctx.fillStyle = 'transparent';
+      for (let nodeIdx = 0; nodeIdx < this.cascadeNodes.length; nodeIdx++) {
+        const node = this.cascadeNodes[nodeIdx];
+        const nodeColor = node.color;
 
-      this.ctx.beginPath();
-      this.ctx.arc(pos.x, pos.y, isDragging ? 10 : 8, 0, Math.PI * 2);
-      this.ctx.stroke();
+        for (let i = 0; i < node.zeros.length; i++) {
+          const pos = toCanvas(node.zeros[i]);
+          const isUnstable = node.zeros[i].abs() > 1;
 
-      if (isUnstable) {
-        this.ctx.fillStyle = 'rgba(229, 115, 115, 0.2)';
-        this.ctx.fill();
+          this.ctx.strokeStyle = isUnstable ? '#e57373' : nodeColor;
+          this.ctx.lineWidth = 2;
+          this.ctx.fillStyle = 'transparent';
+
+          this.ctx.beginPath();
+          this.ctx.arc(pos.x, pos.y, 6, 0, Math.PI * 2);
+          this.ctx.stroke();
+
+          if (isUnstable) {
+            this.ctx.fillStyle = 'rgba(229, 115, 115, 0.2)';
+            this.ctx.fill();
+          }
+        }
+
+        for (let i = 0; i < node.poles.length; i++) {
+          const pos = toCanvas(node.poles[i]);
+          const isUnstable = node.poles[i].abs() > 1;
+          const size = 6;
+
+          this.ctx.strokeStyle = isUnstable ? '#ff0000' : nodeColor;
+          this.ctx.lineWidth = 2;
+
+          this.ctx.beginPath();
+          this.ctx.moveTo(pos.x - size, pos.y - size);
+          this.ctx.lineTo(pos.x + size, pos.y + size);
+          this.ctx.moveTo(pos.x + size, pos.y - size);
+          this.ctx.lineTo(pos.x - size, pos.y + size);
+          this.ctx.stroke();
+
+          if (isUnstable) {
+            this.ctx.fillStyle = 'rgba(229, 115, 115, 0.3)';
+            this.ctx.beginPath();
+            this.ctx.arc(pos.x, pos.y, size + 2, 0, Math.PI * 2);
+            this.ctx.fill();
+          }
+        }
+
+        legendItems.push({ color: nodeColor, label: `节点${nodeIdx + 1}` });
       }
-    }
 
-    for (let i = 0; i < this.localPoles.length; i++) {
-      const pos = toCanvas(this.localPoles[i]);
-      const isUnstable = this.localPoles[i].abs() > 1;
-      const isSelected = this.selectedPoint?.type === 'pole' && this.selectedPoint?.index === i;
-      const isDragging = this.dragging?.type === 'pole' && this.dragging?.index === i;
-      const size = isDragging ? 10 : 8;
+      if (legendItems.length > 0) {
+        this.ctx.save();
+        this.ctx.font = '10px Segoe UI, sans-serif';
+        this.ctx.textAlign = 'right';
+        let yPos = 20;
+        for (const item of legendItems) {
+          this.ctx.strokeStyle = item.color;
+          this.ctx.lineWidth = 2;
+          this.ctx.beginPath();
+          this.ctx.arc(this.width - 80, yPos, 4, 0, Math.PI * 2);
+          this.ctx.stroke();
+          this.ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+          this.ctx.fillText(item.label, this.width - 50, yPos + 4);
+          yPos += 14;
+        }
+        this.ctx.restore();
+      }
+    } else {
+      for (let i = 0; i < this.localZeros.length; i++) {
+        const pos = toCanvas(this.localZeros[i]);
+        const isUnstable = this.localZeros[i].abs() > 1;
+        const isSelected = this.selectedPoint?.type === 'zero' && this.selectedPoint?.index === i;
+        const isDragging = this.dragging?.type === 'zero' && this.dragging?.index === i;
 
-      this.ctx.strokeStyle = isUnstable ? '#ff0000' : '#e57373';
-      this.ctx.lineWidth = isSelected || isDragging ? 3 : 2;
+        this.ctx.strokeStyle = isUnstable ? '#e57373' : '#81c784';
+        this.ctx.lineWidth = isSelected || isDragging ? 3 : 2;
+        this.ctx.fillStyle = 'transparent';
 
-      this.ctx.beginPath();
-      this.ctx.moveTo(pos.x - size, pos.y - size);
-      this.ctx.lineTo(pos.x + size, pos.y + size);
-      this.ctx.moveTo(pos.x + size, pos.y - size);
-      this.ctx.lineTo(pos.x - size, pos.y + size);
-      this.ctx.stroke();
-
-      if (isUnstable) {
-        this.ctx.fillStyle = 'rgba(229, 115, 115, 0.3)';
         this.ctx.beginPath();
-        this.ctx.arc(pos.x, pos.y, size + 2, 0, Math.PI * 2);
-        this.ctx.fill();
+        this.ctx.arc(pos.x, pos.y, isDragging ? 10 : 8, 0, Math.PI * 2);
+        this.ctx.stroke();
+
+        if (isUnstable) {
+          this.ctx.fillStyle = 'rgba(229, 115, 115, 0.2)';
+          this.ctx.fill();
+        }
+      }
+
+      for (let i = 0; i < this.localPoles.length; i++) {
+        const pos = toCanvas(this.localPoles[i]);
+        const isUnstable = this.localPoles[i].abs() > 1;
+        const isSelected = this.selectedPoint?.type === 'pole' && this.selectedPoint?.index === i;
+        const isDragging = this.dragging?.type === 'pole' && this.dragging?.index === i;
+        const size = isDragging ? 10 : 8;
+
+        this.ctx.strokeStyle = isUnstable ? '#ff0000' : '#e57373';
+        this.ctx.lineWidth = isSelected || isDragging ? 3 : 2;
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(pos.x - size, pos.y - size);
+        this.ctx.lineTo(pos.x + size, pos.y + size);
+        this.ctx.moveTo(pos.x + size, pos.y - size);
+        this.ctx.lineTo(pos.x - size, pos.y + size);
+        this.ctx.stroke();
+
+        if (isUnstable) {
+          this.ctx.fillStyle = 'rgba(229, 115, 115, 0.3)';
+          this.ctx.beginPath();
+          this.ctx.arc(pos.x, pos.y, size + 2, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
       }
     }
   }

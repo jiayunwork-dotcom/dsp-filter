@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core';
-import { FirDesignParams, IirDesignParams, FilterCoefficients, FrequencyResponse, Complex, StabilityAnalysis, DesignInfo } from '../types/filter';
+import { FirDesignParams, IirDesignParams, FilterCoefficients, FrequencyResponse, Complex, StabilityAnalysis, DesignInfo, CascadeNode, CascadeSystem, CascadeConnectionType, FirMethod, IirMethod, WindowType, AnalogPrototype, ResponseType } from '../types/filter';
 import { designFIR } from '../dsp/fir-design';
 import { designIIR } from '../dsp/iir-design';
 import { computeFrequencyResponse, computePolesZeros, analyzeStability, filterSignal, generateSignal, coeffsFromPolesZeros, findPhaseJumps } from '../dsp/filter-response';
 import { magnitudeSpectrum } from '../math/fft';
+import { polyMul, polyAdd } from '../math/polynomial';
 
 @Injectable({ providedIn: 'root' })
 export class FilterService {
@@ -128,5 +129,145 @@ export class FilterService {
       sampleRate: 1.0
     };
     return JSON.stringify(data, null, 2);
+  }
+
+  designCascadeNode(params: {
+    filterType: 'FIR' | 'IIR';
+    responseType: ResponseType;
+    firMethod?: FirMethod;
+    iirMethod?: IirMethod;
+    windowType?: WindowType;
+    prototype?: AnalogPrototype;
+    order: number;
+    cutoff: number;
+    cutoff2?: number;
+    kaiserBeta?: number;
+    passbandRipple?: number;
+    stopbandAttenuation?: number;
+    stopbandStart?: number;
+  }): FilterCoefficients {
+    if (params.filterType === 'FIR') {
+      const firParams: FirDesignParams = {
+        filterType: 'FIR',
+        responseType: params.responseType as any,
+        method: params.firMethod || 'window',
+        order: params.order,
+        cutoff: params.cutoff,
+        cutoff2: params.cutoff2,
+        windowType: params.windowType,
+        kaiserBeta: params.kaiserBeta,
+        passbandRipple: params.passbandRipple,
+        stopbandAttenuation: params.stopbandAttenuation,
+        stopbandStart: params.stopbandStart
+      };
+      return this.designFIR(firParams);
+    } else {
+      if (params.responseType === 'allpass') {
+        return { b: [0, -1], a: [1, 0] };
+      }
+      const iirParams: IirDesignParams = {
+        filterType: 'IIR',
+        responseType: params.responseType,
+        method: params.iirMethod || 'bilinear',
+        prototype: params.prototype || 'butterworth',
+        order: Math.min(params.order, 8),
+        cutoff: params.cutoff,
+        cutoff2: params.cutoff2,
+        passbandRipple: params.passbandRipple,
+        stopbandAttenuation: params.stopbandAttenuation
+      };
+      return this.designIIR(iirParams);
+    }
+  }
+
+  multiplyCoefficients(coeffs1: FilterCoefficients, coeffs2: FilterCoefficients): FilterCoefficients {
+    const b = polyMul(coeffs1.b, coeffs2.b);
+    const a = polyMul(coeffs1.a, coeffs2.a);
+    return { b, a };
+  }
+
+  addCoefficients(coeffs1: FilterCoefficients, coeffs2: FilterCoefficients): FilterCoefficients {
+    const commonA = polyMul(coeffs1.a, coeffs2.a);
+    const b1 = polyMul(coeffs1.b, coeffs2.a);
+    const b2 = polyMul(coeffs2.b, coeffs1.a);
+    const b = polyAdd(b1, b2);
+    return { b, a: commonA };
+  }
+
+  computeCascadeTotalResponse(nodes: CascadeNode[], connectionType: CascadeConnectionType): FilterCoefficients | null {
+    if (nodes.length === 0) return null;
+
+    let totalCoeffs: FilterCoefficients = { ...nodes[0].coefficients };
+
+    for (let i = 1; i < nodes.length; i++) {
+      if (connectionType === 'series') {
+        totalCoeffs = this.multiplyCoefficients(totalCoeffs, nodes[i].coefficients);
+      } else {
+        totalCoeffs = this.addCoefficients(totalCoeffs, nodes[i].coefficients);
+      }
+    }
+
+    return totalCoeffs;
+  }
+
+  computeCascadeSystem(system: CascadeSystem): CascadeSystem {
+    const updatedNodes = system.nodes.map(node => {
+      if (node.coefficients.b.length > 0) {
+        const freqResp = this.computeFrequencyResponse(
+          node.coefficients.b,
+          node.coefficients.a,
+          1024
+        );
+        const pz = this.computePolesZeros(node.coefficients.b, node.coefficients.a);
+        return {
+          ...node,
+          frequencyResponse: freqResp,
+          poles: pz.poles,
+          zeros: pz.zeros
+        };
+      }
+      return node;
+    });
+
+    let totalCoeffs = this.computeCascadeTotalResponse(updatedNodes, system.connectionType);
+    let totalFrequencyResponse: FrequencyResponse | null = null;
+    let totalPoles: Complex[] = [];
+    let totalZeros: Complex[] = [];
+    let stability: StabilityAnalysis = { isStable: true, maxPoleMagnitude: 0, stabilityMargin: 1 };
+
+    if (totalCoeffs && totalCoeffs.b.length > 0 && updatedNodes.length >= 2) {
+      totalFrequencyResponse = this.computeFrequencyResponse(totalCoeffs.b, totalCoeffs.a, 1024);
+      const pz = this.computePolesZeros(totalCoeffs.b, totalCoeffs.a);
+      totalPoles = pz.poles;
+      totalZeros = pz.zeros;
+      stability = this.analyzeStability(totalPoles);
+    } else if (updatedNodes.length === 1 && updatedNodes[0].coefficients.b.length > 0) {
+      totalCoeffs = updatedNodes[0].coefficients;
+      totalFrequencyResponse = updatedNodes[0].frequencyResponse;
+      totalPoles = updatedNodes[0].poles;
+      totalZeros = updatedNodes[0].zeros;
+      stability = this.analyzeStability(totalPoles);
+    }
+
+    return {
+      ...system,
+      nodes: updatedNodes,
+      totalCoefficients: totalCoeffs,
+      totalFrequencyResponse,
+      totalPoles,
+      totalZeros,
+      stability
+    };
+  }
+
+  filterSignalWithCascade(signal: number[], system: CascadeSystem): number[] {
+    if (!system.totalCoefficients || system.totalCoefficients.b.length === 0) {
+      return [...signal];
+    }
+    return this.filterSignal(signal, system.totalCoefficients.b, system.totalCoefficients.a);
+  }
+
+  generateId(): string {
+    return Math.random().toString(36).substring(2, 11);
   }
 }

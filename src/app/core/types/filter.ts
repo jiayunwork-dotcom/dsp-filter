@@ -75,3 +75,59 @@ export interface DesignInfo {
   stopbandAttenuation?: number;
   kaiserBeta?: number;
 }
+
+export type CascadeConnectionType = 'series' | 'parallel';
+
+export interface CascadeNode {
+  id: string;
+  label: string;
+  filterType: FilterType;
+  responseType: ResponseType;
+  firMethod?: FirMethod;
+  iirMethod?: IirMethod;
+  windowType?: WindowType;
+  prototype?: AnalogPrototype;
+  order: number;
+  cutoff: number;
+  cutoff2?: number;
+  kaiserBeta?: number;
+  passbandRipple?: number;
+  stopbandAttenuation?: number;
+  stopbandStart?: number;
+  coefficients: FilterCoefficients;
+  frequencyResponse: FrequencyResponse | null;
+  poles: Complex[];
+  zeros: Complex[];
+  color: string;
+}
+
+export interface CascadeBranch {
+  nodes: CascadeNode[];
+}
+
+export interface CascadeSystem {
+  connectionType: CascadeConnectionType;
+  nodes: CascadeNode[];
+  branches?: CascadeBranch[];
+  totalCoefficients: FilterCoefficients | null;
+  totalFrequencyResponse: FrequencyResponse | null;
+  totalPoles: Complex[];
+  totalZeros: Complex[];
+  stability: StabilityAnalysis;
+}
+
+export interface CascadePreset {
+  id: string;
+  name: string;
+  description: string;
+  system: Omit<CascadeSystem, 'totalCoefficients' | 'totalFrequencyResponse' | 'totalPoles' | 'totalZeros' | 'stability'>;
+}
+
+export const CASCADE_NODE_COLORS = [
+  '#4fc3f7',
+  '#81c784',
+  '#ffb74d',
+  '#e57373',
+  '#ba68c8',
+  '#4db6ac'
+];

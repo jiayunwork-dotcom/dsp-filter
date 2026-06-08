@@ -18,12 +18,15 @@ import {
   FrequencyResponse,
   Complex,
   StabilityAnalysis,
-  DesignInfo
+  DesignInfo,
+  CascadeSystem,
+  CascadeNode
 } from '@app/core/types/filter';
 import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } from '@app/shared/components/slider-control/slider-control.component';
 import { FrequencyResponseComponent } from '@app/shared/components/frequency-response/frequency-response.component';
 import { PoleZeroPlotComponent } from '@app/shared/components/pole-zero-plot/pole-zero-plot.component';
 import { TimeDomainComponent } from '@app/shared/components/time-domain/time-domain.component';
+import { CascadeEditorComponent } from '@app/shared/components/cascade-editor/cascade-editor.component';
 
 @Component({
   selector: 'app-main',
@@ -37,7 +40,8 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
     ToggleGroupComponent,
     FrequencyResponseComponent,
     PoleZeroPlotComponent,
-    TimeDomainComponent
+    TimeDomainComponent,
+    CascadeEditorComponent
   ],
   template: `
     <div class="main-container">
@@ -54,7 +58,7 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
       </header>
 
       <div class="content">
-        <aside class="control-panel panel">
+        <aside class="control-panel panel" *ngIf="activeTab === 'single'">
           <div class="control-section">
             <app-select-control
               label="滤波器类型"
@@ -215,65 +219,156 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
           </div>
         </aside>
 
-        <main class="display-area">
-          <div class="response-section panel" [class.unstable]="!stability.isStable">
-            <app-frequency-response
-              *ngIf="frequencyResponse"
-              [response]="frequencyResponse"
-              [response2]="frequencyResponse2"
-              [response2Label]="response2Label"
-              [passband]="passband"
-              [stopband]="stopband"
-              [passbandRipple]="passbandRipple"
-              [stopbandAttenuation]="stopbandAttenuation"
-              [phaseJumps]="phaseJumps"
-              [phaseJumps2]="phaseJumps2"
-            ></app-frequency-response>
+        <div class="center-area">
+          <div class="tabs">
+            <button 
+              class="tab-btn" 
+              [class.active]="activeTab === 'single'"
+              (click)="activeTab = 'single'"
+            >
+              🎛️ 单滤波器设计
+            </button>
+            <button 
+              class="tab-btn" 
+              [class.active]="activeTab === 'cascade'"
+              (click)="activeTab = 'cascade'"
+            >
+              🔗 级联设计
+            </button>
           </div>
 
-          <div class="analysis-grid">
-            <div class="pole-zero-section panel" [class.unstable]="!stability.isStable">
-              <app-pole-zero-plot
-                [zeros]="zeros"
-                [poles]="poles"
-                [isStable]="stability.isStable"
-                [maxPoleMagnitude]="stability.maxPoleMagnitude"
-                [stabilityMargin]="stability.stabilityMargin"
-                [maxOrder]="128"
-                (polesZerosChanged)="onPolesZerosChanged($event)"
-              ></app-pole-zero-plot>
-            </div>
+          <main class="display-area">
+            <ng-container *ngIf="activeTab === 'single'">
+              <div class="response-section panel" [class.unstable]="!stability.isStable">
+                <app-frequency-response
+                  *ngIf="frequencyResponse"
+                  [response]="frequencyResponse"
+                  [response2]="frequencyResponse2"
+                  [response2Label]="response2Label"
+                  [passband]="passband"
+                  [stopband]="stopband"
+                  [passbandRipple]="passbandRipple"
+                  [stopbandAttenuation]="stopbandAttenuation"
+                  [phaseJumps]="phaseJumps"
+                  [phaseJumps2]="phaseJumps2"
+                  [isCascadeMode]="false"
+                ></app-frequency-response>
+              </div>
 
-            <div class="time-section panel">
-              <app-time-domain
-                [b]="coefficients.b"
-                [a]="coefficients.a"
-              ></app-time-domain>
-            </div>
-          </div>
+              <div class="analysis-grid">
+                <div class="pole-zero-section panel" [class.unstable]="!stability.isStable">
+                  <app-pole-zero-plot
+                    [zeros]="zeros"
+                    [poles]="poles"
+                    [isStable]="stability.isStable"
+                    [maxPoleMagnitude]="stability.maxPoleMagnitude"
+                    [stabilityMargin]="stability.stabilityMargin"
+                    [maxOrder]="128"
+                    [isCascadeMode]="false"
+                    (polesZerosChanged)="onPolesZerosChanged($event)"
+                  ></app-pole-zero-plot>
+                </div>
 
-          <div class="coeffs-panel panel" *ngIf="coefficients.b.length > 0">
-            <h4>📊 滤波器系数</h4>
-            <div class="coeffs-info">
-              <div class="coeffs-section">
-                <span class="label">分子系数 b:</span>
-                <div class="coeffs-list">
-                  <span class="coeff" *ngFor="let c of coefficients.b; trackBy: trackByIndex">
-                    {{ c.toFixed(6) }}
-                  </span>
+                <div class="time-section panel">
+                  <app-time-domain
+                    [b]="coefficients.b"
+                    [a]="coefficients.a"
+                    [cascadeSystem]="cascadeSystem"
+                    [useCascadeSystem]="useCascadeInTimeDomain && cascadeSystem.nodes.length > 0"
+                  ></app-time-domain>
                 </div>
               </div>
-              <div class="coeffs-section" *ngIf="coefficients.a.length > 1">
-                <span class="label">分母系数 a:</span>
-                <div class="coeffs-list">
-                  <span class="coeff" *ngFor="let c of coefficients.a; trackBy: trackByIndex">
-                    {{ c.toFixed(6) }}
-                  </span>
+
+              <div class="coeffs-panel panel" *ngIf="coefficients.b.length > 0">
+                <h4>📊 滤波器系数</h4>
+                <div class="coeffs-info">
+                  <div class="coeffs-section">
+                    <span class="label">分子系数 b:</span>
+                    <div class="coeffs-list">
+                      <span class="coeff" *ngFor="let c of coefficients.b; trackBy: trackByIndex">
+                        {{ c.toFixed(6) }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="coeffs-section" *ngIf="coefficients.a.length > 1">
+                    <span class="label">分母系数 a:</span>
+                    <div class="coeffs-list">
+                      <span class="coeff" *ngFor="let c of coefficients.a; trackBy: trackByIndex">
+                        {{ c.toFixed(6) }}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </main>
+            </ng-container>
+
+            <ng-container *ngIf="activeTab === 'cascade'">
+              <div class="response-section panel" [class.unstable]="cascadeSystem.nodes.length >= 2 && !cascadeSystem.stability.isStable">
+                <app-frequency-response
+                  *ngIf="getCascadeDisplayResponse()"
+                  [response]="getCascadeDisplayResponse()!"
+                  [cascadeNodes]="cascadeSystem.nodes"
+                  [cascadeTotalResponse]="cascadeSystem.totalFrequencyResponse"
+                  [isCascadeMode]="true"
+                ></app-frequency-response>
+              </div>
+
+              <div class="analysis-grid">
+                <div class="pole-zero-section panel" [class.unstable]="cascadeSystem.nodes.length >= 2 && !cascadeSystem.stability.isStable">
+                  <app-pole-zero-plot
+                    [zeros]="cascadeSystem.totalZeros"
+                    [poles]="cascadeSystem.totalPoles"
+                    [isStable]="cascadeSystem.stability.isStable"
+                    [maxPoleMagnitude]="cascadeSystem.stability.maxPoleMagnitude"
+                    [stabilityMargin]="cascadeSystem.stability.stabilityMargin"
+                    [maxOrder]="128"
+                    [cascadeNodes]="cascadeSystem.nodes"
+                    [isCascadeMode]="true"
+                  ></app-pole-zero-plot>
+                </div>
+
+                <div class="time-section panel">
+                  <app-time-domain
+                    [b]="getCascadeB()"
+                    [a]="getCascadeA()"
+                    [cascadeSystem]="cascadeSystem"
+                    [useCascadeSystem]="cascadeSystem.nodes.length > 0"
+                  ></app-time-domain>
+                </div>
+              </div>
+
+              <div class="coeffs-panel panel" *ngIf="cascadeSystem.totalCoefficients && cascadeSystem.totalCoefficients.b.length > 0">
+                <h4>📊 级联系统总系数</h4>
+                <div class="coeffs-info">
+                  <div class="coeffs-section">
+                    <span class="label">分子系数 b:</span>
+                    <div class="coeffs-list">
+                      <span class="coeff" *ngFor="let c of cascadeSystem.totalCoefficients!.b; trackBy: trackByIndex">
+                        {{ c.toFixed(6) }}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="coeffs-section" *ngIf="cascadeSystem.totalCoefficients!.a.length > 1">
+                    <span class="label">分母系数 a:</span>
+                    <div class="coeffs-list">
+                      <span class="coeff" *ngFor="let c of cascadeSystem.totalCoefficients!.a; trackBy: trackByIndex">
+                        {{ c.toFixed(6) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ng-container>
+          </main>
+        </div>
+
+        <aside class="cascade-panel panel" *ngIf="activeTab === 'cascade'">
+          <app-cascade-editor
+            [system]="cascadeSystem"
+            (systemChanged)="onCascadeSystemChanged($event)"
+            (nodeAdded)="onCascadeNodeAdded()"
+          ></app-cascade-editor>
+        </aside>
       </div>
 
       <div class="export-modal" *ngIf="showExportModal" (click)="closeExportModal()">
@@ -340,10 +435,65 @@ import { TimeDomainComponent } from '@app/shared/components/time-domain/time-dom
       gap: 1rem;
       padding: 1rem;
     }
+    .content:has(.cascade-panel) {
+      grid-template-columns: 320px 1fr 380px;
+    }
+    @media (max-width: 1400px) {
+      .content:has(.cascade-panel) {
+        grid-template-columns: 1fr;
+      }
+    }
     @media (max-width: 1200px) {
       .content {
         grid-template-columns: 1fr;
       }
+    }
+
+    .center-area {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      background: var(--bg-panel);
+      padding: 0.5rem;
+      border-radius: 8px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+
+    .tab-btn:hover {
+      background: rgba(79, 195, 247, 0.1);
+      border-color: var(--primary);
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: var(--bg-dark);
+      border-color: var(--primary);
+      font-weight: 600;
+    }
+
+    .cascade-panel {
+      position: sticky;
+      top: 1rem;
+      height: fit-content;
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
     }
     .control-panel {
       position: sticky;
@@ -574,6 +724,19 @@ export class MainComponent implements OnInit, OnDestroy {
   exportFormat = 'python';
   exportContent = '';
   copied = false;
+
+  activeTab: 'single' | 'cascade' = 'single';
+  useCascadeInTimeDomain = false;
+
+  cascadeSystem: CascadeSystem = {
+    connectionType: 'series',
+    nodes: [],
+    totalCoefficients: null,
+    totalFrequencyResponse: null,
+    totalPoles: [],
+    totalZeros: [],
+    stability: { isStable: true, maxPoleMagnitude: 0, stabilityMargin: 1 }
+  };
 
   private designSubject = new Subject<void>();
   private designSubscription: any;
@@ -847,5 +1010,46 @@ export class MainComponent implements OnInit, OnDestroy {
 
   trackByIndex(index: number): number {
     return index;
+  }
+
+  getCascadeDisplayResponse(): FrequencyResponse | null {
+    if (this.cascadeSystem.nodes.length === 0) {
+      return this.frequencyResponse;
+    }
+    if (this.cascadeSystem.totalFrequencyResponse) {
+      return this.cascadeSystem.totalFrequencyResponse;
+    }
+    if (this.cascadeSystem.nodes.length === 1 && this.cascadeSystem.nodes[0].frequencyResponse) {
+      return this.cascadeSystem.nodes[0].frequencyResponse;
+    }
+    return this.frequencyResponse;
+  }
+
+  getCascadeB(): number[] {
+    if (this.cascadeSystem.totalCoefficients) {
+      return this.cascadeSystem.totalCoefficients.b;
+    }
+    if (this.cascadeSystem.nodes.length === 1) {
+      return this.cascadeSystem.nodes[0].coefficients.b;
+    }
+    return [];
+  }
+
+  getCascadeA(): number[] {
+    if (this.cascadeSystem.totalCoefficients) {
+      return this.cascadeSystem.totalCoefficients.a;
+    }
+    if (this.cascadeSystem.nodes.length === 1) {
+      return this.cascadeSystem.nodes[0].coefficients.a;
+    }
+    return [1];
+  }
+
+  onCascadeSystemChanged(system: CascadeSystem): void {
+    this.cascadeSystem = system;
+  }
+
+  onCascadeNodeAdded(): void {
+    this.useCascadeInTimeDomain = this.cascadeSystem.nodes.length > 0;
   }
 }

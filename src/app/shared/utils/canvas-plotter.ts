@@ -150,10 +150,11 @@ export class CanvasPlotter {
     yScale: (v: number) => number,
     style: PlotStyle = {}
   ): void {
-    const { color = '#4fc3f7', lineWidth = 2, dashed = false } = style;
+    const { color = '#4fc3f7', lineWidth = 2, dashed = false, alpha = 1 } = style;
 
     this.ctx.strokeStyle = color;
     this.ctx.lineWidth = lineWidth;
+    this.ctx.globalAlpha = alpha;
     this.ctx.setLineDash(dashed ? [5, 5] : []);
     this.ctx.beginPath();
 
@@ -168,6 +169,7 @@ export class CanvasPlotter {
     }
     this.ctx.stroke();
     this.ctx.setLineDash([]);
+    this.ctx.globalAlpha = 1;
   }
 
   drawPoints(
