@@ -184,7 +184,7 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
     }
 
     if (this.isCascadeMode && this.cascadeNodes.length > 0) {
-      const legendItems: { color: string; label: string }[] = [];
+      const legendItems: { color: string; label: string; lineWidth?: number }[] = [];
 
       for (let i = 0; i < this.cascadeNodes.length; i++) {
         const node = this.cascadeNodes[i];
@@ -198,7 +198,7 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
             lineWidth: 1.5, 
             alpha: 0.5 
           });
-          legendItems.push({ color: node.color, label: `节点${i + 1}: ${node.filterType} ${node.order}阶` });
+          legendItems.push({ color: node.color, label: `节点${i + 1}: ${node.filterType} ${node.order}阶`, lineWidth: 2 });
         }
       }
 
@@ -209,9 +209,10 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
         }));
         plotter.drawLine(totalMagData, scales.x, scales.y, { 
           color: '#ffffff', 
-          lineWidth: 3 
+          lineWidth: 4,
+          alpha: 1
         });
-        legendItems.unshift({ color: '#ffffff', label: '级联总响应' });
+        legendItems.unshift({ color: '#ffffff', label: '级联总响应', lineWidth: 4 });
       } else if (this.cascadeNodes.length === 1 && this.cascadeNodes[0].frequencyResponse) {
         const magData = this.cascadeNodes[0].frequencyResponse.frequencies.map((f, i) => ({
           x: f * xScale,
@@ -219,7 +220,7 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
         }));
         plotter.drawLine(magData, scales.x, scales.y, { 
           color: this.cascadeNodes[0].color, 
-          lineWidth: 2.5 
+          lineWidth: 3
         });
       }
 
@@ -229,8 +230,13 @@ export class FrequencyResponseComponent implements OnInit, OnChanges {
         ctx.textAlign = 'right';
         let yPos = 35;
         for (const item of legendItems) {
-          ctx.fillStyle = item.color;
-          ctx.fillRect(rect.width - 150, yPos, 15, 10);
+          const lineWidth = item.lineWidth || 2;
+          ctx.strokeStyle = item.color;
+          ctx.lineWidth = lineWidth;
+          ctx.beginPath();
+          ctx.moveTo(rect.width - 150, yPos + 5);
+          ctx.lineTo(rect.width - 135, yPos + 5);
+          ctx.stroke();
           ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
           ctx.fillText(item.label, rect.width - 160, yPos + 9);
           yPos += 18;

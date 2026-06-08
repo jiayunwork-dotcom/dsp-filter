@@ -53,47 +53,133 @@ import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } 
         </div>
       </div>
 
-      <div class="flow-diagram" #flowDiagram>
-        <div class="input-node">
-          <div class="node-circle input">
-          <span>IN</span>
-        </div>
-        </div>
+      <div class="flow-diagram" #flowDiagram [class.parallel]="system.connectionType === 'parallel'">
+        <ng-container *ngIf="system.connectionType === 'series'">
+          <div class="input-node">
+            <div class="node-circle input">
+            <span>IN</span>
+          </div>
+          </div>
 
-        <ng-container *ngFor="let node of system.nodes; let i = index; trackBy: trackByNodeId">
-          <div class="arrow">→</div>
-          <div
-            class="node-wrapper"
-            [class.dragging]="draggedNodeId === node.id"
-            [class.selected]="selectedNodeId === node.id"
-            draggable="true"
-            (dragstart)="onDragStart($event, node, i)"
-            (dragover)="onDragOver($event)"
-            (drop)="onDrop($event, i)"
-            (dragend)="onDragEnd()"
-            (click)="selectNode(node.id)"
-          >
-            <div class="node-circle" [style.borderColor]="node.color">
-              <div class="node-type">{{ node.filterType }}</div>
-              <div class="node-order">{{ node.order }}阶</div>
-              <div class="node-response">{{ getResponseLabel(node.responseType) }}</div>
+          <ng-container *ngFor="let node of system.nodes; let i = index; trackBy: trackByNodeId">
+            <div class="arrow">→</div>
+            <div
+              class="node-wrapper"
+              [class.dragging]="draggedNodeId === node.id"
+              [class.selected]="selectedNodeId === node.id"
+              draggable="true"
+              (dragstart)="onDragStart($event, node, i)"
+              (dragover)="onDragOver($event)"
+              (drop)="onDrop($event, i)"
+              (dragend)="onDragEnd()"
+              (click)="selectNode(node.id)"
+            >
+              <div class="node-circle" [style.borderColor]="node.color">
+                <div class="node-type">{{ node.filterType }}</div>
+                <div class="node-order">{{ node.order }}阶</div>
+                <div class="node-response">{{ getResponseLabel(node.responseType) }}</div>
+              </div>
+              <div class="node-actions">
+                <button class="node-delete" (click)="$event.stopPropagation(); removeNode(i)" title="删除">✕</button>
+              </div>
             </div>
-            <div class="node-actions">
-              <button class="node-delete" (click)="$event.stopPropagation(); removeNode(i)" title="删除">✕</button>
-            </div>
+          </ng-container>
+
+          <div class="arrow" *ngIf="system.nodes.length < 6">→</div>
+          <div class="add-node" *ngIf="system.nodes.length < 6" (click)="openAddModal()">
+            <div class="add-circle">+</div>
+          </div>
+          <div class="add-node disabled" *ngIf="system.nodes.length >= 6" title="最多支持6个节点">
+            <div class="add-circle">+</div>
+          </div>
+
+          <div class="output-node">
+            <div class="node-circle output">
+            <span>OUT</span>
+          </div>
           </div>
         </ng-container>
 
-        <div class="arrow" *ngIf="system.nodes.length < 6">→</div>
-        <div class="add-node" *ngIf="system.nodes.length < 6" (click)="openAddModal()">
-          <div class="add-circle">+</div>
-        </div>
+        <ng-container *ngIf="system.connectionType === 'parallel'">
+          <div class="parallel-layout">
+            <div class="parallel-left">
+              <div class="input-node">
+                <div class="node-circle input">
+                  <span>IN</span>
+                </div>
+              </div>
+              <div class="parallel-split">
+                <div class="split-dot"></div>
+              </div>
+            </div>
 
-        <div class="output-node">
-          <div class="node-circle output">
-          <span>OUT</span>
-        </div>
-        </div>
+            <div class="parallel-branches">
+              <ng-container *ngFor="let node of system.nodes; let i = index; trackBy: trackByNodeId">
+                <div class="parallel-branch">
+                  <div class="branch-line top"></div>
+                  <div class="branch-arrow">→</div>
+                  <div
+                    class="node-wrapper"
+                    [class.dragging]="draggedNodeId === node.id"
+                    [class.selected]="selectedNodeId === node.id"
+                    draggable="true"
+                    (dragstart)="onDragStart($event, node, i)"
+                    (dragover)="onDragOver($event)"
+                    (drop)="onDrop($event, i)"
+                    (dragend)="onDragEnd()"
+                    (click)="selectNode(node.id)"
+                  >
+                    <div class="node-circle" [style.borderColor]="node.color">
+                      <div class="node-type">{{ node.filterType }}</div>
+                      <div class="node-order">{{ node.order }}阶</div>
+                      <div class="node-response">{{ getResponseLabel(node.responseType) }}</div>
+                    </div>
+                    <div class="node-actions">
+                      <button class="node-delete" (click)="$event.stopPropagation(); removeNode(i)" title="删除">✕</button>
+                    </div>
+                  </div>
+                  <div class="branch-arrow">→</div>
+                  <div class="branch-line bottom"></div>
+                </div>
+              </ng-container>
+
+              <div class="parallel-branch" *ngIf="system.nodes.length < 6">
+                <div class="branch-line top"></div>
+                <div class="branch-arrow">→</div>
+                <div class="add-node" (click)="openAddModal()">
+                  <div class="add-circle">+</div>
+                </div>
+                <div class="branch-arrow">→</div>
+                <div class="branch-line bottom"></div>
+              </div>
+
+              <div class="parallel-branch" *ngIf="system.nodes.length >= 6">
+                <div class="branch-line top"></div>
+                <div class="branch-arrow">→</div>
+                <div class="add-node disabled" title="最多支持6个节点">
+                  <div class="add-circle">+</div>
+                </div>
+                <div class="branch-arrow">→</div>
+                <div class="branch-line bottom"></div>
+              </div>
+            </div>
+
+            <div class="parallel-right">
+              <div class="parallel-merge">
+                <div class="merge-dot"></div>
+              </div>
+              <div class="output-node">
+                <div class="node-circle output">
+                  <span>OUT</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+
+      <div class="max-nodes-warning" *ngIf="system.nodes.length >= 6">
+        ⚠️ 已达到最大节点数 (6/6)，请删除节点后再添加
       </div>
 
       <div class="node-info" *ngIf="selectedNode">
@@ -314,6 +400,116 @@ import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } 
       min-height: 140px;
     }
 
+    .flow-diagram.parallel {
+      min-height: 280px;
+      align-items: stretch;
+    }
+
+    .parallel-layout {
+      display: flex;
+      align-items: stretch;
+      gap: 0.5rem;
+      width: 100%;
+    }
+
+    .parallel-left, .parallel-right {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+
+    .parallel-split, .parallel-merge {
+      position: relative;
+      width: 20px;
+      flex: 1;
+    }
+
+    .split-dot, .merge-dot {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+    }
+
+    .parallel-split::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 0;
+      width: 2px;
+      height: 50%;
+      background: var(--text-secondary);
+      transform: translateX(-50%);
+    }
+
+    .parallel-split::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 2px;
+      height: 50%;
+      background: var(--text-secondary);
+      transform: translateX(-50%);
+    }
+
+    .parallel-merge::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 0;
+      width: 2px;
+      height: 50%;
+      background: var(--text-secondary);
+      transform: translateX(-50%);
+    }
+
+    .parallel-merge::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 2px;
+      height: 50%;
+      background: var(--text-secondary);
+      transform: translateX(-50%);
+    }
+
+    .parallel-branches {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      flex: 1;
+      justify-content: center;
+    }
+
+    .parallel-branch {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+
+    .branch-line {
+      flex: 1;
+      height: 2px;
+      background: var(--text-secondary);
+      min-width: 20px;
+    }
+
+    .branch-arrow {
+      flex-shrink: 0;
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+    }
+
     .input-node, .output-node {
       flex-shrink: 0;
     }
@@ -439,6 +635,27 @@ import { SliderControlComponent, SelectControlComponent, ToggleGroupComponent } 
       border-color: var(--primary);
       color: var(--primary);
       background: rgba(79, 195, 247, 0.1);
+    }
+
+    .add-node.disabled {
+      cursor: not-allowed;
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    .add-node.disabled .add-circle {
+      border-style: dashed;
+      border-color: var(--text-secondary);
+    }
+
+    .max-nodes-warning {
+      padding: 0.75rem;
+      background: rgba(255, 183, 77, 0.1);
+      border: 1px solid rgba(255, 183, 77, 0.3);
+      border-radius: 6px;
+      color: #ffb74d;
+      font-size: 0.85rem;
+      text-align: center;
     }
 
     .node-info {
