@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { Subject } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import { FilterService } from '@app/core/services/filter.service';
@@ -35,6 +35,7 @@ import { CascadeEditorComponent } from '@app/shared/components/cascade-editor/ca
     CommonModule,
     FormsModule,
     RouterLink,
+    RouterLinkActive,
     SliderControlComponent,
     SelectControlComponent,
     ToggleGroupComponent,
@@ -51,9 +52,10 @@ import { CascadeEditorComponent } from '@app/shared/components/cascade-editor/ca
           <p class="subtitle">交互式数字信号处理滤波器设计教学平台</p>
         </div>
         <nav class="nav-links">
-          <a routerLink="/" class="active">滤波器设计</a>
-          <a routerLink="/windows">窗函数对比</a>
-          <a routerLink="/tutorial">教学模式</a>
+          <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">滤波器设计</a>
+          <a routerLink="/windows" routerLinkActive="active">窗函数对比</a>
+          <a routerLink="/adaptive" routerLinkActive="active">自适应滤波</a>
+          <a routerLink="/tutorial" routerLinkActive="active">教学模式</a>
         </nav>
       </header>
 

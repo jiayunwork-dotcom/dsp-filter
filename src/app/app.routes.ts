@@ -12,5 +12,9 @@ export const routes: Routes = [
   {
     path: 'windows',
     loadComponent: () => import('./components/window-comparison/window-comparison.component').then(m => m.WindowComparisonComponent)
+  },
+  {
+    path: 'adaptive',
+    loadComponent: () => import('./components/adaptive-filter/adaptive-filter.component').then(m => m.AdaptiveFilterComponent)
   }
 ];
