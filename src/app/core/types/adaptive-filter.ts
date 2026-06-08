@@ -82,6 +82,30 @@ export interface PerformanceMetrics {
   convergenceIteration: number;
 }
 
+export interface SensitivityScanConfig {
+  enabled: boolean;
+  paramName: string;
+  paramLabel: string;
+  min: number;
+  max: number;
+  steps: number;
+  logScale: boolean;
+}
+
+export interface SensitivityDataPoint {
+  paramValue: number;
+  snrImprovement: number;
+  convergenceIteration: number;
+}
+
+export interface SensitivityResult {
+  algorithm: AdaptiveAlgorithmType;
+  paramName: string;
+  paramLabel: string;
+  dataPoints: SensitivityDataPoint[];
+  optimalPoint: SensitivityDataPoint;
+}
+
 export const ALGORITHM_COLORS: Record<AdaptiveAlgorithmType, string> = {
   lms: '#4fc3f7',
   nlms: '#81c784',

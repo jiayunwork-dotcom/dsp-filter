@@ -14,7 +14,10 @@ import {
   ALGORITHM_LABELS,
   LMSParams,
   NLMSParams,
-  RLSParams
+  RLSParams,
+  SensitivityScanConfig,
+  SensitivityResult,
+  SensitivityDataPoint
 } from '@app/core/types/adaptive-filter';
 import { CanvasPlotter, resizeCanvas } from '@app/shared/utils/canvas-plotter';
 import {
@@ -241,7 +244,7 @@ import {
                 class="algorithm-tab"
                 [class.active]="activeAlgorithmTab === alg"
                 [style.border-color]="ALGORITHM_COLORS[alg]"
-                (click)="activeAlgorithmTab = alg"
+                (click)="onAlgorithmTabChange(alg)"
               >
                 <span [style.color]="ALGORITHM_COLORS[alg]">{{ ALGORITHM_LABELS[alg] }}</span>
               </button>
@@ -259,7 +262,7 @@ import {
                   [max]="0"
                   [step]="0.01"
                   [value]="log10(algorithmConfig.lms.mu)"
-                  (input)="onLmsMuChange($any($event).target.value)"
+                  (input)="onLmsMuChange($any($event).target.value); onParamChange()"
                 />
                 <div class="range-labels">
                   <span>0.001</span>
@@ -275,6 +278,7 @@ import {
                   [step]="1"
                   [decimals]="0"
                   [(value)]="algorithmConfig.lms.order"
+                  (valueChanging)="onParamChange()"
                 ></app-slider-control>
               </div>
             </ng-container>
@@ -291,7 +295,7 @@ import {
                   [max]="0"
                   [step]="0.01"
                   [value]="log10(algorithmConfig.nlms.mu)"
-                  (input)="onNlmsMuChange($any($event).target.value)"
+                  (input)="onNlmsMuChange($any($event).target.value); onParamChange()"
                 />
                 <div class="range-labels">
                   <span>0.001</span>
@@ -307,6 +311,7 @@ import {
                   [step]="1"
                   [decimals]="0"
                   [(value)]="algorithmConfig.nlms.order"
+                  (valueChanging)="onParamChange()"
                 ></app-slider-control>
               </div>
 
@@ -318,6 +323,7 @@ import {
                   [step]="0.01"
                   [decimals]="2"
                   [(value)]="algorithmConfig.nlms.beta"
+                  (valueChanging)="onParamChange()"
                 ></app-slider-control>
               </div>
 
@@ -336,6 +342,7 @@ import {
                   [step]="0.005"
                   [decimals]="3"
                   [(value)]="algorithmConfig.rls.lambda"
+                  (valueChanging)="onParamChange()"
                 ></app-slider-control>
               </div>
 
@@ -347,6 +354,7 @@ import {
                   [step]="1"
                   [decimals]="0"
                   [(value)]="algorithmConfig.rls.order"
+                  (valueChanging)="onParamChange()"
                 ></app-slider-control>
               </div>
 
@@ -358,6 +366,7 @@ import {
                   [step]="10"
                   [decimals]="0"
                   [(value)]="algorithmConfig.rls.delta"
+                  (valueChanging)="onParamChange()"
                 ></app-slider-control>
               </div>
             </ng-container>
@@ -379,8 +388,114 @@ import {
             <span class="progress-text">{{ progress.toFixed(0) }}%</span>
           </div>
 
+          <div class="sensitivity-panel panel">
+            <div class="panel-header" (click)="sensitivityCollapsed = !sensitivityCollapsed">
+              <h3>📈 参数灵敏度分析</h3>
+              <span class="collapse-icon">{{ sensitivityCollapsed ? '▶' : '▼' }}</span>
+            </div>
+            <div class="sensitivity-content" [class.collapsed]="sensitivityCollapsed">
+              <div class="control-section">
+                <label class="checkbox-label">
+                  <input
+                    type="checkbox"
+                    [(ngModel)]="sensitivityConfig.enabled"
+                    (change)="onSensitivityEnabledChange()"
+                  />
+                  <span>启用参数灵敏度分析</span>
+                </label>
+              </div>
+
+              <div *ngIf="sensitivityConfig.enabled" class="sensitivity-controls">
+                <div class="control-section">
+                  <span class="label">扫描参数</span>
+                  <div class="param-info">
+                    <span class="param-name">{{ sensitivityConfig.paramLabel }}</span>
+                    <span class="param-algorithm">({{ ALGORITHM_LABELS[activeAlgorithmTab] }})</span>
+                  </div>
+                </div>
+
+                <div class="control-section" *ngIf="sensitivityConfig.logScale">
+                  <div class="slider-header">
+                    <span class="label">最小值 (对数刻度)</span>
+                    <span class="value">{{ sensitivityConfig.min.toExponential(3) }}</span>
+                  </div>
+                  <input
+                    type="range"
+                    [min]="-4"
+                    [max]="0"
+                    [step]="0.01"
+                    [value]="log10(sensitivityConfig.min)"
+                    (input)="onSensitivityMinChange($any($event).target.value)"
+                  />
+                </div>
+
+                <div class="control-section" *ngIf="!sensitivityConfig.logScale">
+                  <app-slider-control
+                    label="最小值"
+                    [min]="0.9"
+                    [max]="0.999"
+                    [step]="0.001"
+                    [decimals]="3"
+                    [(value)]="sensitivityConfig.min"
+                  ></app-slider-control>
+                </div>
+
+                <div class="control-section" *ngIf="sensitivityConfig.logScale">
+                  <div class="slider-header">
+                    <span class="label">最大值 (对数刻度)</span>
+                    <span class="value">{{ sensitivityConfig.max.toExponential(3) }}</span>
+                  </div>
+                  <input
+                    type="range"
+                    [min]="-4"
+                    [max]="0"
+                    [step]="0.01"
+                    [value]="log10(sensitivityConfig.max)"
+                    (input)="onSensitivityMaxChange($any($event).target.value)"
+                  />
+                </div>
+
+                <div class="control-section" *ngIf="!sensitivityConfig.logScale">
+                  <app-slider-control
+                    label="最大值"
+                    [min]="0.901"
+                    [max]="1.0"
+                    [step]="0.001"
+                    [decimals]="3"
+                    [(value)]="sensitivityConfig.max"
+                  ></app-slider-control>
+                </div>
+
+                <div class="control-section">
+                  <app-slider-control
+                    label="扫描步数"
+                    [min]="5"
+                    [max]="20"
+                    [step]="1"
+                    [decimals]="0"
+                    [(value)]="sensitivityConfig.steps"
+                  ></app-slider-control>
+                </div>
+
+                <button
+                  class="run-sensitivity-btn"
+                  (click)="runSensitivityAnalysis()"
+                  type="button"
+                  [disabled]="isSensitivityRunning"
+                >
+                  {{ isSensitivityRunning ? '⏳ 分析中...' : '▶️ 运行灵敏度分析' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div class="metrics-panel panel" *ngIf="performanceMetrics.length > 0">
-            <h3>📊 性能指标统计</h3>
+            <div class="panel-header">
+              <h3>📊 性能指标统计</h3>
+              <button (click)="exportCSV()" type="button" class="export-btn">
+                📥 导出CSV
+              </button>
+            </div>
             <div class="metrics-grid">
               <div class="metric-card" *ngFor="let metric of performanceMetrics">
                 <div class="metric-header" [style.color]="ALGORITHM_COLORS[metric.algorithm]">
@@ -405,11 +520,26 @@ import {
               </div>
             </div>
           </div>
+
+          <div class="sensitivity-result-panel panel" *ngIf="sensitivityResult">
+            <h3>📊 参数灵敏度分析结果</h3>
+            <div class="sensitivity-info">
+              <span>扫描参数: {{ sensitivityResult.paramLabel }}</span>
+              <span>最优值: {{ sensitivityResult.optimalPoint.paramValue.toExponential(3) }}</span>
+              <span>最佳ΔSNR: {{ sensitivityResult.optimalPoint.snrImprovement.toFixed(2) }} dB</span>
+            </div>
+            <canvas #sensitivityCanvas class="sensitivity-canvas"></canvas>
+          </div>
         </div>
 
         <div class="display-area">
           <div class="waveform-panel panel">
-            <h3>📈 仿真波形</h3>
+            <div class="panel-header">
+              <h3>📈 仿真波形</h3>
+              <span class="mode-badge" [class.preview]="isPreviewMode">
+                {{ isPreviewMode ? '⚡ 预览模式 (0.5s)' : '✅ 完整模式' }}
+              </span>
+            </div>
             <div class="waveform-grid">
               <div class="waveform-subplot">
                 <div class="subplot-title">期望信号 d(n)</div>
@@ -854,6 +984,151 @@ import {
       width: 100%;
       margin: 0.25rem 0;
     }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .panel-header h3 {
+      margin: 0;
+    }
+
+    .collapse-icon {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      transition: transform 0.2s;
+    }
+
+    .sensitivity-content {
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+
+    .sensitivity-content.collapsed {
+      max-height: 0;
+      display: none;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .checkbox-label input {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
+
+    .param-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .param-name {
+      font-family: 'Courier New', monospace;
+      font-weight: 600;
+      color: var(--primary);
+    }
+
+    .param-algorithm {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .run-sensitivity-btn {
+      width: 100%;
+      padding: 0.75rem;
+      font-size: 1rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 0.5rem;
+    }
+
+    .run-sensitivity-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(129, 199, 132, 0.4);
+    }
+
+    .run-sensitivity-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .export-btn {
+      padding: 0.4rem 0.8rem;
+      font-size: 0.85rem;
+      font-weight: 500;
+      background: var(--bg-panel);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .export-btn:hover {
+      background: var(--bg-panel-hover);
+      border-color: var(--primary);
+    }
+
+    .mode-badge {
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: rgba(129, 199, 132, 0.2);
+      color: var(--secondary);
+      border: 1px solid var(--secondary);
+    }
+
+    .mode-badge.preview {
+      background: rgba(255, 183, 77, 0.2);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .sensitivity-result-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .sensitivity-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 0.5rem;
+    }
+
+    .sensitivity-info span {
+      background: var(--bg-panel);
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .sensitivity-canvas {
+      width: 100%;
+      height: 300px;
+      display: block;
+    }
   `]
 })
 export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
@@ -863,6 +1138,7 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
   @ViewChild('recoveredCanvas') recoveredCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('learningCurveCanvas') learningCurveCanvas!: ElementRef<HTMLCanvasElement>;
   @ViewChild('coefficientTrajectoryCanvas') coefficientTrajectoryCanvas!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('sensitivityCanvas') sensitivityCanvas!: ElementRef<HTMLCanvasElement>;
 
   readonly ALGORITHM_COLORS = ALGORITHM_COLORS;
   readonly ALGORITHM_LABELS = ALGORITHM_LABELS;
@@ -923,7 +1199,28 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
   coeffYIndex = 1;
   maxDisplayCoeffs = [0, 1, 2, 3];
 
-  constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) {}
+  sensitivityCollapsed = false;
+  isSensitivityRunning = false;
+  sensitivityConfig: SensitivityScanConfig = {
+    enabled: false,
+    paramName: 'mu',
+    paramLabel: '步长 μ',
+    min: 0.001,
+    max: 0.1,
+    steps: 10,
+    logScale: true
+  };
+  sensitivityResult: SensitivityResult | null = null;
+
+  isPreviewMode = false;
+  private previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly PREVIEW_DURATION = 0.5;
+  private readonly PREVIEW_DEBOUNCE_MS = 300;
+  private originalDuration: number;
+
+  constructor(private ngZone: NgZone, private cdr: ChangeDetectorRef) {
+    this.originalDuration = this.signalConfig.duration;
+  }
 
   ngOnInit(): void {
     this.activeAlgorithmTab = this.algorithmConfig.selectedAlgorithms[0] || 'lms';
@@ -943,7 +1240,8 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
       this.outputCanvas,
       this.recoveredCanvas,
       this.learningCurveCanvas,
-      this.coefficientTrajectoryCanvas
+      this.coefficientTrajectoryCanvas,
+      this.sensitivityCanvas
     ];
 
     canvases.forEach(canvasRef => {
@@ -965,6 +1263,476 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
     this.algorithmConfig.nlms.mu = Math.pow(10, parseFloat(value));
   }
 
+  onSensitivityMinChange(value: string): void {
+    this.sensitivityConfig.min = Math.pow(10, parseFloat(value));
+  }
+
+  onSensitivityMaxChange(value: string): void {
+    this.sensitivityConfig.max = Math.pow(10, parseFloat(value));
+  }
+
+  onSensitivityEnabledChange(): void {
+    if (this.sensitivityConfig.enabled) {
+      this.updateSensitivityConfigForAlgorithm(this.activeAlgorithmTab);
+    }
+  }
+
+  private updateSensitivityConfigForAlgorithm(alg: AdaptiveAlgorithmType): void {
+    if (alg === 'lms') {
+      this.sensitivityConfig.paramName = 'mu';
+      this.sensitivityConfig.paramLabel = '步长 μ';
+      this.sensitivityConfig.min = 0.001;
+      this.sensitivityConfig.max = 0.1;
+      this.sensitivityConfig.logScale = true;
+    } else if (alg === 'nlms') {
+      this.sensitivityConfig.paramName = 'beta';
+      this.sensitivityConfig.paramLabel = '归一化因子 β';
+      this.sensitivityConfig.min = 0.1;
+      this.sensitivityConfig.max = 1.0;
+      this.sensitivityConfig.logScale = false;
+    } else {
+      this.sensitivityConfig.paramName = 'lambda';
+      this.sensitivityConfig.paramLabel = '遗忘因子 λ';
+      this.sensitivityConfig.min = 0.9;
+      this.sensitivityConfig.max = 0.999;
+      this.sensitivityConfig.logScale = false;
+    }
+  }
+
+  async runSensitivityAnalysis(): Promise<void> {
+    if (this.isSensitivityRunning) return;
+    if (this.algorithmConfig.selectedAlgorithms.length === 0) {
+      alert('请至少选择一种算法');
+      return;
+    }
+
+    this.isSensitivityRunning = true;
+    this.cdr.detectChanges();
+
+    try {
+      await this.runSensitivityAnalysisAsync();
+    } catch (e) {
+      console.error('Sensitivity analysis error:', e);
+    } finally {
+      this.isSensitivityRunning = false;
+    }
+  }
+
+  private async runSensitivityAnalysisAsync(): Promise<void> {
+    const alg = this.activeAlgorithmTab;
+    const config = this.sensitivityConfig;
+
+    const paramValues: number[] = [];
+    if (config.logScale) {
+      const logMin = Math.log10(config.min);
+      const logMax = Math.log10(config.max);
+      const logStep = (logMax - logMin) / (config.steps - 1);
+      for (let i = 0; i < config.steps; i++) {
+        paramValues.push(Math.pow(10, logMin + i * logStep));
+      }
+    } else {
+      const step = (config.max - config.min) / (config.steps - 1);
+      for (let i = 0; i < config.steps; i++) {
+        paramValues.push(config.min + i * step);
+      }
+    }
+
+    const dataPoints: SensitivityDataPoint[] = [];
+
+    for (let stepIdx = 0; stepIdx < paramValues.length; stepIdx++) {
+      const paramValue = paramValues[stepIdx];
+
+      const originalConfig = { ...this.algorithmConfig[alg] };
+
+      if (alg === 'lms') {
+        (this.algorithmConfig.lms as any)[config.paramName] = paramValue;
+      } else if (alg === 'nlms') {
+        (this.algorithmConfig.nlms as any)[config.paramName] = paramValue;
+      } else {
+        (this.algorithmConfig.rls as any)[config.paramName] = paramValue;
+      }
+
+      const N = Math.floor(this.signalConfig.sampleRate * this.signalConfig.duration);
+      const { signals, signalPower, noisePower } = generateSignals(this.signalConfig);
+
+      let params: LMSParams | NLMSParams | RLSParams;
+      if (alg === 'lms') {
+        params = this.algorithmConfig.lms;
+      } else if (alg === 'nlms') {
+        params = this.algorithmConfig.nlms;
+      } else {
+        params = this.algorithmConfig.rls;
+      }
+
+      const result = await runAdaptiveFilter(alg, signals, params, signalPower, noisePower);
+
+      dataPoints.push({
+        paramValue,
+        snrImprovement: result.snrImprovement,
+        convergenceIteration: result.convergenceIteration
+      });
+
+      if (alg === 'lms') {
+        (this.algorithmConfig.lms as any)[config.paramName] = (originalConfig as any)[config.paramName];
+      } else if (alg === 'nlms') {
+        (this.algorithmConfig.nlms as any)[config.paramName] = (originalConfig as any)[config.paramName];
+      } else {
+        (this.algorithmConfig.rls as any)[config.paramName] = (originalConfig as any)[config.paramName];
+      }
+    }
+
+    let optimalPoint = dataPoints[0];
+    for (const point of dataPoints) {
+      if (point.snrImprovement > optimalPoint.snrImprovement) {
+        optimalPoint = point;
+      }
+    }
+
+    this.sensitivityResult = {
+      algorithm: alg,
+      paramName: config.paramName,
+      paramLabel: config.paramLabel,
+      dataPoints,
+      optimalPoint
+    };
+
+    this.cdr.detectChanges();
+    setTimeout(() => {
+      this.plotSensitivityAnalysis();
+    }, 50);
+  }
+
+  private plotSensitivityAnalysis(): void {
+    if (!this.sensitivityCanvas || !this.sensitivityResult) return;
+
+    const canvas = this.sensitivityCanvas.nativeElement;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width;
+    const height = rect.height;
+    const padding = { top: 40, right: 60, bottom: 50, left: 60 };
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+
+    ctx.clearRect(0, 0, width, height);
+
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.5)';
+    ctx.fillRect(0, 0, width, height);
+
+    const dataPoints = this.sensitivityResult.dataPoints;
+    const xValues = dataPoints.map(d => d.paramValue);
+    const snrValues = dataPoints.map(d => d.snrImprovement);
+    const convValues = dataPoints.map(d => d.convergenceIteration >= 0 ? d.convergenceIteration : NaN);
+
+    const xMin = Math.min(...xValues);
+    const xMax = Math.max(...xValues);
+    const y1Min = Math.min(...snrValues) - 5;
+    const y1Max = Math.max(...snrValues) + 5;
+    const validConvValues = convValues.filter(v => !isNaN(v));
+    const y2Min = validConvValues.length > 0 ? Math.min(...validConvValues) * 0.9 : 0;
+    const y2Max = validConvValues.length > 0 ? Math.max(...validConvValues) * 1.1 : 1000;
+
+    const xScale = (x: number) => {
+      if (this.sensitivityConfig.logScale) {
+        const logX = Math.log10(x);
+        const logMin = Math.log10(xMin);
+        const logMax = Math.log10(xMax);
+        return padding.left + ((logX - logMin) / (logMax - logMin)) * plotWidth;
+      }
+      return padding.left + ((x - xMin) / (xMax - xMin)) * plotWidth;
+    };
+    const y1Scale = (y: number) => padding.top + (1 - (y - y1Min) / (y1Max - y1Min)) * plotHeight;
+    const y2Scale = (y: number) => padding.top + (1 - (y - y2Min) / (y2Max - y2Min)) * plotHeight;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      const y = padding.top + (i / 5) * plotHeight;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(width - padding.right, y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, padding.top);
+    ctx.lineTo(padding.left, height - padding.bottom);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(width - padding.right, padding.top);
+    ctx.lineTo(width - padding.right, height - padding.bottom);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(padding.left, height - padding.bottom);
+    ctx.lineTo(width - padding.right, height - padding.bottom);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = '11px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i <= 5; i++) {
+      const x = padding.left + (i / 5) * plotWidth;
+      const xVal = this.sensitivityConfig.logScale
+        ? Math.pow(10, Math.log10(xMin) + (i / 5) * (Math.log10(xMax) - Math.log10(xMin)))
+        : xMin + (i / 5) * (xMax - xMin);
+      ctx.fillText(xVal.toExponential(2), x, height - padding.bottom + 20);
+    }
+
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 5; i++) {
+      const y = padding.top + (i / 5) * plotHeight;
+      const y1Val = y1Max - (i / 5) * (y1Max - y1Min);
+      ctx.fillStyle = '#4fc3f7';
+      ctx.fillText(y1Val.toFixed(1), padding.left - 8, y + 4);
+    }
+
+    ctx.textAlign = 'left';
+    for (let i = 0; i <= 5; i++) {
+      const y = padding.top + (i / 5) * plotHeight;
+      const y2Val = y2Max - (i / 5) * (y2Max - y2Min);
+      ctx.fillStyle = '#ffb74d';
+      ctx.fillText(Math.round(y2Val).toString(), width - padding.right + 8, y + 4);
+    }
+
+    ctx.fillStyle = '#4fc3f7';
+    ctx.font = 'bold 12px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.save();
+    ctx.translate(15, height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('ΔSNR (dB)', 0, 0);
+    ctx.restore();
+
+    ctx.fillStyle = '#ffb74d';
+    ctx.save();
+    ctx.translate(width - 15, height / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.fillText('收敛迭代次数', 0, 0);
+    ctx.restore();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.fillText(this.sensitivityResult.paramLabel, width / 2, height - 10);
+
+    ctx.strokeStyle = '#4fc3f7';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i < dataPoints.length; i++) {
+      const x = xScale(dataPoints[i].paramValue);
+      const y = y1Scale(dataPoints[i].snrImprovement);
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = '#4fc3f7';
+    for (let i = 0; i < dataPoints.length; i++) {
+      const x = xScale(dataPoints[i].paramValue);
+      const y = y1Scale(dataPoints[i].snrImprovement);
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = '#ffb74d';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    let firstValid = true;
+    for (let i = 0; i < dataPoints.length; i++) {
+      if (isNaN(convValues[i])) continue;
+      const x = xScale(dataPoints[i].paramValue);
+      const y = y2Scale(convValues[i]);
+      if (firstValid) {
+        ctx.moveTo(x, y);
+        firstValid = false;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#ffb74d';
+    for (let i = 0; i < dataPoints.length; i++) {
+      if (isNaN(convValues[i])) continue;
+      const x = xScale(dataPoints[i].paramValue);
+      const y = y2Scale(convValues[i]);
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const optimalPoint = this.sensitivityResult.optimalPoint;
+    const optX = xScale(optimalPoint.paramValue);
+    const optY = y1Scale(optimalPoint.snrImprovement);
+
+    ctx.strokeStyle = '#81c784';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(optX, optY, 10, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = '#81c784';
+    ctx.font = 'bold 11px Segoe UI, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(
+      `最优: ${optimalPoint.paramValue.toExponential(3)}, ΔSNR=${optimalPoint.snrImprovement.toFixed(2)}dB`,
+      optX + 15,
+      optY - 10
+    );
+
+    ctx.font = '11px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.textAlign = 'right';
+    const legendX = width - padding.right - 10;
+    const legendY = padding.top + 15;
+
+    ctx.fillStyle = '#4fc3f7';
+    ctx.fillRect(legendX - 80, legendY - 8, 15, 3);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.fillText('ΔSNR', legendX - 90, legendY - 4);
+
+    ctx.fillStyle = '#ffb74d';
+    ctx.fillRect(legendX - 80, legendY + 8, 15, 3);
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = '#ffb74d';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(legendX - 80, legendY + 5, 15, 3);
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.fillText('收敛迭代', legendX - 90, legendY + 20);
+  }
+
+  exportCSV(): void {
+    if (this.signals.length === 0 || this.algorithmResults.length === 0) {
+      alert('请先运行仿真');
+      return;
+    }
+
+    const headers: string[] = ['timestamp_s', 'desired', 'observed'];
+
+    this.algorithmResults.forEach(result => {
+      const algLabel = ALGORITHM_LABELS[result.algorithm];
+      headers.push(`${algLabel.toLowerCase()}_output`);
+      headers.push(`${algLabel.toLowerCase()}_recovered`);
+      headers.push(`${algLabel.toLowerCase()}_error_sq_db`);
+    });
+
+    const rows: string[] = [];
+    rows.push(headers.join(','));
+
+    for (let i = 0; i < this.signals.length; i++) {
+      const row: string[] = [];
+      row.push(this.signals[i].time.toFixed(6));
+      row.push(this.signals[i].desired.toFixed(6));
+      row.push(this.signals[i].observed.toFixed(6));
+
+      this.algorithmResults.forEach(result => {
+        const output = result.y[i];
+        const recovered = this.signals[i].observed - output;
+        const errorSqDb = 10 * Math.log10(Math.max(result.e[i] * result.e[i], 1e-10));
+
+        row.push(output.toFixed(6));
+        row.push(recovered.toFixed(6));
+        row.push(errorSqDb.toFixed(6));
+      });
+
+      rows.push(row.join(','));
+    }
+
+    const csvContent = rows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    const algNames = this.algorithmResults.map(r => ALGORITHM_LABELS[r.algorithm].toLowerCase()).join('-');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `dsp-adaptive-${algNames}-${timestamp}.csv`;
+
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  onParamChange(): void {
+    if (this.isRunning || this.isSensitivityRunning) return;
+
+    if (this.previewDebounceTimer) {
+      clearTimeout(this.previewDebounceTimer);
+    }
+
+    this.isPreviewMode = true;
+
+    this.previewDebounceTimer = setTimeout(() => {
+      this.runPreviewSimulation();
+    }, this.PREVIEW_DEBOUNCE_MS);
+  }
+
+  private async runPreviewSimulation(): Promise<void> {
+    if (this.algorithmConfig.selectedAlgorithms.length === 0) return;
+
+    this.isRunning = true;
+    this.progress = 0;
+    this.cdr.detectChanges();
+
+    try {
+      this.originalDuration = this.signalConfig.duration;
+      this.signalConfig.duration = this.PREVIEW_DURATION;
+
+      await this.runSimulationAsync();
+    } catch (e) {
+      console.error('Preview simulation error:', e);
+    } finally {
+      this.signalConfig.duration = this.originalDuration;
+      this.isRunning = false;
+      this.progress = 0;
+    }
+  }
+
+  async runSimulation(): Promise<void> {
+    if (this.isRunning) return;
+    if (this.algorithmConfig.selectedAlgorithms.length === 0) {
+      alert('请至少选择一种算法');
+      return;
+    }
+
+    if (this.previewDebounceTimer) {
+      clearTimeout(this.previewDebounceTimer);
+      this.previewDebounceTimer = null;
+    }
+
+    this.isPreviewMode = false;
+    this.isRunning = true;
+    this.progress = 0;
+    this.cdr.detectChanges();
+
+    try {
+      await this.runSimulationAsync();
+    } catch (e) {
+      console.error('Simulation error:', e);
+    } finally {
+      this.isRunning = false;
+      this.progress = 0;
+    }
+  }
+
   toggleAlgorithm(alg: AdaptiveAlgorithmType, event: Event): void {
     const checked = (event.target as HTMLInputElement).checked;
     const index = this.algorithmConfig.selectedAlgorithms.indexOf(alg);
@@ -980,32 +1748,24 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
       this.algorithmConfig.selectedAlgorithms.splice(index, 1);
       if (this.activeAlgorithmTab === alg && this.algorithmConfig.selectedAlgorithms.length > 0) {
         this.activeAlgorithmTab = this.algorithmConfig.selectedAlgorithms[0];
+        if (this.sensitivityConfig.enabled) {
+          this.updateSensitivityConfigForAlgorithm(this.activeAlgorithmTab);
+        }
       }
     }
 
     if (this.algorithmConfig.selectedAlgorithms.length > 0 && !this.algorithmConfig.selectedAlgorithms.includes(this.activeAlgorithmTab)) {
       this.activeAlgorithmTab = this.algorithmConfig.selectedAlgorithms[0];
+      if (this.sensitivityConfig.enabled) {
+        this.updateSensitivityConfigForAlgorithm(this.activeAlgorithmTab);
+      }
     }
   }
 
-  async runSimulation(): Promise<void> {
-    if (this.isRunning) return;
-    if (this.algorithmConfig.selectedAlgorithms.length === 0) {
-      alert('请至少选择一种算法');
-      return;
-    }
-
-    this.isRunning = true;
-    this.progress = 0;
-    this.cdr.detectChanges();
-
-    try {
-      await this.runSimulationAsync();
-    } catch (e) {
-      console.error('Simulation error:', e);
-    } finally {
-      this.isRunning = false;
-      this.progress = 0;
+  onAlgorithmTabChange(alg: AdaptiveAlgorithmType): void {
+    this.activeAlgorithmTab = alg;
+    if (this.sensitivityConfig.enabled) {
+      this.updateSensitivityConfigForAlgorithm(alg);
     }
   }
 
