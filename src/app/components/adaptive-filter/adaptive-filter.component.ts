@@ -892,7 +892,7 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
   algorithmConfig: AdaptiveAlgorithmConfig = {
     selectedAlgorithms: ['lms'],
     lms: { mu: 0.01, order: 32 },
-    nlms: { mu: 0.1, order: 32, beta: 1.0, delta: 1e-6 },
+    nlms: { mu: 0.5, order: 32, beta: 1.0, delta: 1e-6 },
     rls: { lambda: 0.995, order: 32, delta: 100 }
   };
 
@@ -1011,71 +1011,69 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
 
   private async runSimulationAsync(): Promise<void> {
     const N = Math.floor(this.signalConfig.sampleRate * this.signalConfig.duration);
-    const needsProgress = N > 16000;
 
     const updateProgress = (val: number) => {
       this.progress = val;
       this.cdr.detectChanges();
     };
 
-    return new Promise((resolve) => {
-      updateProgress(5);
+    updateProgress(5);
+    await new Promise(resolve => setTimeout(resolve, 10));
 
-      setTimeout(() => {
-        const { signals, signalPower, noisePower } = generateSignals(this.signalConfig);
-        this.signals = signals;
-        this.signalPower = signalPower;
-        this.noisePower = noisePower;
+    const { signals, signalPower, noisePower } = generateSignals(this.signalConfig);
+    this.signals = signals;
+    this.signalPower = signalPower;
+    this.noisePower = noisePower;
 
-        updateProgress(25);
+    updateProgress(20);
+    await new Promise(resolve => setTimeout(resolve, 10));
 
-        setTimeout(() => {
-          const results: AlgorithmResult[] = [];
-          const totalAlgs = this.algorithmConfig.selectedAlgorithms.length;
+    const results: AlgorithmResult[] = [];
+    const totalAlgs = this.algorithmConfig.selectedAlgorithms.length;
+    const progressPerAlg = 70 / totalAlgs;
 
-          const runNextAlg = (algIdx: number) => {
-            if (algIdx >= totalAlgs) {
-              this.algorithmResults = results;
-              updateProgress(90);
+    for (let algIdx = 0; algIdx < totalAlgs; algIdx++) {
+      const alg = this.algorithmConfig.selectedAlgorithms[algIdx];
+      let params: LMSParams | NLMSParams | RLSParams;
+      if (alg === 'lms') {
+        params = this.algorithmConfig.lms;
+      } else if (alg === 'nlms') {
+        params = this.algorithmConfig.nlms;
+      } else {
+        params = this.algorithmConfig.rls;
+      }
 
-              setTimeout(() => {
-                this.updatePerformanceMetrics();
-                this.updateMaxDisplayCoeffs();
-                this.plotAll();
-                updateProgress(100);
-                resolve();
-              }, needsProgress ? 50 : 0);
-              return;
-            }
+      const algStartProgress = 20 + algIdx * progressPerAlg;
 
-            const alg = this.algorithmConfig.selectedAlgorithms[algIdx];
-            let params: LMSParams | NLMSParams | RLSParams;
-            if (alg === 'lms') {
-              params = this.algorithmConfig.lms;
-            } else if (alg === 'nlms') {
-              params = this.algorithmConfig.nlms;
-            } else {
-              params = this.algorithmConfig.rls;
-            }
+      const algProgressCallback = (algProgress: number) => {
+        const currentProgress = algStartProgress + algProgress * progressPerAlg * 0.95;
+        updateProgress(currentProgress);
+      };
 
-            const result = runAdaptiveFilter(
-              alg,
-              signals,
-              params,
-              signalPower,
-              noisePower
-            );
-            results.push(result);
+      const result = await runAdaptiveFilter(
+        alg,
+        signals,
+        params,
+        signalPower,
+        noisePower,
+        algProgressCallback
+      );
+      results.push(result);
 
-            updateProgress(25 + ((algIdx + 1) / totalAlgs) * 65);
+      updateProgress(20 + (algIdx + 1) * progressPerAlg);
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
 
-            setTimeout(() => runNextAlg(algIdx + 1), needsProgress ? 50 : 0);
-          };
+    this.algorithmResults = results;
+    updateProgress(92);
 
-          runNextAlg(0);
-        }, needsProgress ? 50 : 0);
-      }, needsProgress ? 50 : 0);
-    });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    this.updatePerformanceMetrics();
+    this.updateMaxDisplayCoeffs();
+    this.plotAll();
+    updateProgress(100);
+
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
 
   private updatePerformanceMetrics(): void {
@@ -1121,7 +1119,7 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
     this.algorithmConfig = {
       selectedAlgorithms: ['lms'],
       lms: { mu: 0.01, order: 32 },
-      nlms: { mu: 0.1, order: 32, beta: 1.0, delta: 1e-6 },
+      nlms: { mu: 0.5, order: 32, beta: 1.0, delta: 1e-6 },
       rls: { lambda: 0.995, order: 32, delta: 100 }
     };
 

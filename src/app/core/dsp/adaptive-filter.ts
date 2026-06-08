@@ -65,12 +65,14 @@ export function generateSignals(config: SignalConfig): {
   const targetSnrLinear = Math.pow(10, snr / 10);
   const noiseScale = Math.sqrt(signalPower / (noisePower * targetSnrLinear));
 
+  const referenceDelay = 8;
   let reference: number[] = [];
   for (let n = 0; n < N; n++) {
+    const delayedIdx = Math.max(0, n - referenceDelay);
     const uncorrelatedNoise = gaussianRandom();
     reference.push(
-      referenceCorrelation * noise[n] +
-      uncorrelatedNoise * Math.sqrt(1 - referenceCorrelation * referenceCorrelation) * Math.sqrt(noisePower)
+      referenceCorrelation * noise[delayedIdx] +
+      uncorrelatedNoise * Math.sqrt(1 - referenceCorrelation * referenceCorrelation)
     );
   }
 
@@ -112,11 +114,12 @@ function computePower(signal: number[]): number {
   return sum / signal.length;
 }
 
-export function lmsFilter(
+export async function lmsFilter(
   x: number[],
   d: number[],
-  params: LMSParams
-): { y: number[]; e: number[]; w: number[][] } {
+  params: LMSParams,
+  progressCallback?: (progress: number) => void
+): Promise<{ y: number[]; e: number[]; w: number[][] }> {
   const N = x.length;
   const M = params.order;
   const mu = params.mu;
@@ -125,6 +128,8 @@ export function lmsFilter(
   const e: number[] = new Array(N).fill(0);
   const w: number[][] = [];
   let weights = new Array(M).fill(0);
+
+  const chunkSize = Math.max(100, Math.floor(N / 50));
 
   for (let n = 0; n < N; n++) {
     w.push([...weights]);
@@ -146,16 +151,22 @@ export function lmsFilter(
     for (let k = 0; k < M; k++) {
       weights[k] += mu * en * xBuf[k];
     }
+
+    if (progressCallback && (n + 1) % chunkSize === 0) {
+      progressCallback((n + 1) / N);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
 
   return { y, e, w };
 }
 
-export function nlmsFilter(
+export async function nlmsFilter(
   x: number[],
   d: number[],
-  params: NLMSParams
-): { y: number[]; e: number[]; w: number[][] } {
+  params: NLMSParams,
+  progressCallback?: (progress: number) => void
+): Promise<{ y: number[]; e: number[]; w: number[][] }> {
   const N = x.length;
   const M = params.order;
   const mu = params.mu;
@@ -166,6 +177,8 @@ export function nlmsFilter(
   const e: number[] = new Array(N).fill(0);
   const w: number[][] = [];
   let weights = new Array(M).fill(0);
+
+  const chunkSize = Math.max(100, Math.floor(N / 50));
 
   for (let n = 0; n < N; n++) {
     w.push([...weights]);
@@ -192,16 +205,22 @@ export function nlmsFilter(
     for (let k = 0; k < M; k++) {
       weights[k] += (beta * mu * en * xBuf[k]) / xNorm;
     }
+
+    if (progressCallback && (n + 1) % chunkSize === 0) {
+      progressCallback((n + 1) / N);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
 
   return { y, e, w };
 }
 
-export function rlsFilter(
+export async function rlsFilter(
   x: number[],
   d: number[],
-  params: RLSParams
-): { y: number[]; e: number[]; w: number[][] } {
+  params: RLSParams,
+  progressCallback?: (progress: number) => void
+): Promise<{ y: number[]; e: number[]; w: number[][] }> {
   const N = x.length;
   const M = params.order;
   const lambda = params.lambda;
@@ -217,6 +236,8 @@ export function rlsFilter(
     P.push(new Array(M).fill(0));
     P[i][i] = delta;
   }
+
+  const chunkSize = Math.max(50, Math.floor(N / 50));
 
   for (let n = 0; n < N; n++) {
     w.push([...weights]);
@@ -267,6 +288,11 @@ export function rlsFilter(
       }
     }
     P = newP;
+
+    if (progressCallback && (n + 1) % chunkSize === 0) {
+      progressCallback((n + 1) / N);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
 
   return { y, e, w };
@@ -318,6 +344,9 @@ export function computeMetrics(
   }
   initialMse /= initialWindow;
 
+  const minMseRatio = Math.min(0.9, 0.6 + Math.max(0, snrImprovement) / 30);
+  const requiredConsecutive = Math.max(5, Math.floor(30 - Math.max(0, snrImprovement) * 2));
+
   for (let i = 0; i < N; i++) {
     const eSq = e[i] * e[i];
     windowSum += eSq;
@@ -328,10 +357,10 @@ export function computeMetrics(
 
     if (i >= windowSize - 1) {
       const avgEsq = windowSum / windowSize;
-      if (avgEsq < threshold && avgEsq < initialMse * 0.5) {
+      if (avgEsq < threshold && avgEsq < initialMse * minMseRatio) {
         consecutiveCount++;
-        if (consecutiveCount >= 30) {
-          convergenceIteration = i - windowSize - 29;
+        if (consecutiveCount >= requiredConsecutive) {
+          convergenceIteration = i - windowSize - requiredConsecutive + 1;
           break;
         }
       } else {
@@ -343,13 +372,14 @@ export function computeMetrics(
   return { mse, snrImprovement, convergenceIteration };
 }
 
-export function runAdaptiveFilter(
+export async function runAdaptiveFilter(
   algorithm: AdaptiveAlgorithmType,
   signals: SignalData[],
   params: LMSParams | NLMSParams | RLSParams,
   signalPower: number,
-  noisePower: number
-): AlgorithmResult {
+  noisePower: number,
+  progressCallback?: (progress: number) => void
+): Promise<AlgorithmResult> {
   const x = signals.map(s => s.reference);
   const d = signals.map(s => s.observed);
   const desired = signals.map(s => s.desired);
@@ -357,11 +387,11 @@ export function runAdaptiveFilter(
 
   let result;
   if (algorithm === 'lms') {
-    result = lmsFilter(x, d, params as LMSParams);
+    result = await lmsFilter(x, d, params as LMSParams, progressCallback);
   } else if (algorithm === 'nlms') {
-    result = nlmsFilter(x, d, params as NLMSParams);
+    result = await nlmsFilter(x, d, params as NLMSParams, progressCallback);
   } else {
-    result = rlsFilter(x, d, params as RLSParams);
+    result = await rlsFilter(x, d, params as RLSParams, progressCallback);
   }
 
   const metrics = computeMetrics(
