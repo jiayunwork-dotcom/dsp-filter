@@ -432,8 +432,8 @@ import {
                 <div class="control-section" *ngIf="!sensitivityConfig.logScale">
                   <app-slider-control
                     label="最小值"
-                    [min]="0.9"
-                    [max]="0.999"
+                    [min]="getSensitivityMin()"
+                    [max]="getSensitivityMax() - 0.001"
                     [step]="0.001"
                     [decimals]="3"
                     [(value)]="sensitivityConfig.min"
@@ -458,8 +458,8 @@ import {
                 <div class="control-section" *ngIf="!sensitivityConfig.logScale">
                   <app-slider-control
                     label="最大值"
-                    [min]="0.901"
-                    [max]="1.0"
+                    [min]="getSensitivityMin() + 0.001"
+                    [max]="getSensitivityMax()"
                     [step]="0.001"
                     [decimals]="3"
                     [(value)]="sensitivityConfig.max"
@@ -678,15 +678,20 @@ import {
       height: fit-content;
       max-height: calc(100vh - 2rem);
       overflow-y: auto;
+      overflow-x: hidden;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
+      z-index: 1;
+      contain: layout;
     }
 
     .center-area {
       display: flex;
       flex-direction: column;
       gap: 1rem;
+      position: relative;
+      z-index: 5;
     }
 
     .display-area {
@@ -747,6 +752,8 @@ import {
       display: flex;
       gap: 0.5rem;
       margin-bottom: 0.5rem;
+      position: relative;
+      z-index: 2;
     }
 
     .algorithm-tab {
@@ -784,6 +791,11 @@ import {
     .action-buttons {
       display: flex;
       gap: 1rem;
+      position: relative;
+      z-index: 100;
+      background: var(--bg);
+      padding-top: 0.5rem;
+      margin-top: -0.5rem;
     }
 
     .action-buttons button {
@@ -791,6 +803,10 @@ import {
       padding: 0.75rem;
       font-size: 1rem;
       font-weight: 600;
+      cursor: pointer;
+      pointer-events: auto;
+      position: relative;
+      z-index: 101;
     }
 
     .progress-container {
@@ -1297,6 +1313,19 @@ export class AdaptiveFilterComponent implements OnInit, AfterViewInit {
       this.sensitivityConfig.max = 0.999;
       this.sensitivityConfig.logScale = false;
     }
+    this.cdr.detectChanges();
+  }
+
+  getSensitivityMin(): number {
+    if (this.activeAlgorithmTab === 'nlms') {
+      return 0.1;
+    } else {
+      return 0.9;
+    }
+  }
+
+  getSensitivityMax(): number {
+    return 1.0;
   }
 
   async runSensitivityAnalysis(): Promise<void> {
